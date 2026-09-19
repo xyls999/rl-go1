@@ -1,0 +1,92 @@
+# nav_v2: fwwb-inspired goal-conditioned obstacle-avoidance reward contract.
+# Trained on top of a frozen locomotion policy; the policy output is the
+# three-dimensional base velocity command [vx, vy, yaw_rate].
+#
+# Joint-level locomotion terms are intentionally absent: the navigation policy
+# cannot influence joints directly, so including them would only add noise.
+
+[track_lin_vel_xy]
+weight = 0.15
+std = 0.25
+
+[track_ang_vel_z]
+weight = 0.10
+std = 0.25
+
+[path_progress]
+weight = 4.0
+max_speed = 0.80
+negative_scale = 0.25
+
+[bearing_progress]
+weight = 0.25
+max_rate = 1.0
+negative_scale = 0.25
+stop_radius = 1.0
+
+[reach_goal]
+weight = 300.0
+threshold = 0.60
+# The navigation course ends at the goal itself, not where the staircase ends.
+# Any point in the one-metre strip that starts here, across the full four-metre
+# half-width route, finishes the task; overshooting counts too.
+start_offset = 33.10
+half_width = 4.0
+
+[settled_goal]
+weight = 100.0
+threshold = 0.60
+max_linear_speed = 0.18
+max_yaw_rate = 0.30
+
+[goal_braking]
+weight = -2.0
+slow_radius = 1.50
+stop_radius = 0.60
+max_decel = 0.35
+
+[stuck_duration]
+weight = -1.5
+min_command = 0.10
+still_speed = 0.08
+grace_steps = 55
+ramp_steps = 90
+goal_radius = 1.0
+
+[unsafe_tilt]
+weight = -8.0
+roll_limit = 0.35
+pitch_limit = 0.60
+
+[tilt_recovery]
+weight = 0.60
+trigger_roll = 0.22
+trigger_pitch = 0.35
+scale = 0.08
+
+[wall_proximity_brake]
+# Avoidance is out of scope for the speed layer (schema 5): the policy reads the
+# terrain relief map and only decides vx/wz, so the wall terms stay disabled.
+weight = 0.0
+wall_score_threshold = 0.10
+safe_speed = 0.18
+# Flat ground sits ~0.02 below the score threshold while a 0.15 m step is
+# already ~0.7, so flat terrain never registers as a wall.
+temperature = 0.03
+height_threshold = 0.12
+front_columns = 10
+
+[obstacle_evasion]
+weight = 0.0
+wall_score_threshold = 0.10
+turn_threshold = 0.12
+
+[navigation_time]
+weight = -0.002
+
+[undesired_contacts]
+weight = -1.0
+threshold = 0.0
+
+[termination]
+weight = -250.0

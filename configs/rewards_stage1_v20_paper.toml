@@ -1,0 +1,219 @@
+# V20 reward contract: simplified, terrain-agnostic locomotion objective inspired by
+# Rudin et al., Learning to Walk in Minutes (CoRL 2021 / PMLR 164).
+# Gait-clock, diagonal-pair and high-clearance terms are intentionally disabled:
+# gait discovery is left to PPO instead of rewarding a hand-coded trot.
+
+[track_linear_velocity]
+weight = 1.00
+std = 0.30
+
+[track_yaw_velocity]
+weight = 0.50
+std = 0.35
+
+[forward_velocity]
+weight = 0.65
+target_velocity = 0.70
+negative_velocity_penalty = 0.50
+
+[forward_progress]
+weight = 1.20
+max_progress_speed = 0.60
+
+[goal_closeness]
+weight = 0.20
+max_distance = 34.0
+
+[course_checkpoint]
+weight = 1.20
+first = 0.25
+second = 0.50
+third = 0.75
+
+[goal_reached]
+weight = 80.0
+start_offset = 33.10
+end_offset = 34.10
+half_width = 4.0
+
+[straight_line]
+weight = 1.00
+std = 0.75
+
+[velocity_direction]
+weight = 1.50
+std = 0.30
+min_speed = 0.10
+
+[cross_track_l2]
+weight = -1.50
+deadband = 0.10
+scale = 0.75
+max_cost = 4.0
+
+[heading_alignment]
+weight = 0.60
+std = 0.35
+
+[upright]
+# Moderate body-level posture anchor; do not freeze the gait.
+weight = 0.20
+
+[phase_contact]
+weight = 0.0
+flat_hz = 2.40
+terrain_hz = 2.40
+flat_duty_factor = 0.56
+terrain_duty_factor = 0.62
+transition_width = 0.12
+force_scale = 25.0
+slip_scale = 0.25
+
+[phase_clearance]
+weight = 0.0
+flat_height = 0.080
+terrain_height = 0.130
+std = 0.040
+
+[base_height]
+weight = 0.60
+target_height = 0.340
+minimum_height = 0.285
+std = 0.050
+low_height_penalty = 0.50
+
+[foot_load_balance]
+# Penalize persistent uneven load without forbidding temporary stair asymmetry.
+weight = -0.10
+ema_alpha = 0.96
+tolerance = 0.08
+scale = 0.15
+max_cost = 4.0
+force_threshold = 4.0
+
+[trot_gait]
+weight = 0.0
+std = 0.10
+max_err = 0.20
+velocity_threshold = 0.10
+terrain_relief = 0.30
+
+[foot_clearance]
+# Touchdown-only clearance target; prevents rear feet from dragging without
+# rewarding an indefinitely suspended leg.
+weight = 0.08
+target_height = 0.075
+min_height = 0.045
+terrain_target_height = 0.145
+terrain_min_height = 0.105
+std = 0.040
+velocity_tanh = 2.0
+
+[small_steps]
+weight = 0.0
+target_length = 0.20
+min_length = 0.05
+max_length = 0.38
+
+[step_frequency]
+weight = 0.0
+target_hz = 2.0
+min_hz = 0.8
+max_hz = 4.0
+window_seconds = 1.0
+
+[four_feet_grounded]
+weight = 0.0
+grace_seconds = 0.12
+ramp_seconds = 0.25
+
+[foot_contact_cycle]
+weight = 0.0
+max_air_time = 0.65
+ramp_seconds = 0.25
+terrain_relief = 0.25
+
+[air_time_variance]
+weight = 0.0
+max_time = 0.50
+terrain_relief = 0.25
+
+[flat_trot_pattern]
+weight = 0.0
+terrain_relief = 0.30
+
+[foot_lateral]
+# Symmetric anti-splay / anti-cross-body foot placement constraint.
+weight = -0.10
+max_outward_deviation = 0.055
+max_inward_deviation = 0.055
+cross_body_penalty = 2.8
+terrain_relief = 0.45
+
+[feet_air_time]
+weight = 0.20
+threshold = 0.18
+max_air_time = 0.45
+command_threshold = 0.10
+
+[feet_slide]
+# Stance slip is penalized after a small deadband; keep the term moderate so
+# the policy does not choose standing still instead of climbing.
+weight = -0.015
+contact_force_threshold = 1.0
+deadband = 0.04
+scale = 0.25
+terrain_relief = 0.35
+
+[four_feet_airborne]
+weight = -0.50
+
+[base_vertical_velocity_l2]
+weight = -0.40
+
+[base_roll_pitch_rate_l2]
+weight = -0.08
+scale = 1.5
+
+[base_orientation_l2]
+weight = -0.35
+scale = 0.35
+
+[action_rate_l2]
+weight = -0.015
+
+[action_acceleration_l2]
+weight = -0.0008
+
+[joint_torque_l2]
+weight = -0.00001
+
+[joint_deviation_l2]
+weight = -0.035
+deadband = 0.14
+scale = 0.60
+
+[hip_abduction_deviation_l2]
+# Stronger but deadbanded hip-roll constraint for inner/outer splay.
+weight = -0.035
+deadband = 0.065
+scale = 0.22
+
+[hip_abduction_velocity_l2]
+weight = -0.0006
+scale = 3.0
+
+[joint_power_l1]
+weight = -0.00001
+
+[joint_acceleration_l2]
+weight = -0.00000025
+
+[fallen]
+weight = -5.0
+
+[collision]
+weight = -1.50
+
+[out_of_bounds]
+weight = -2.0

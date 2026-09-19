@@ -1,0 +1,22 @@
+{
+  "locomotion": {"num_steps_per_env": 32, "gamma": 0.99, "num_envs": 1024},
+  "navigation": {"num_steps_per_env": 64, "gamma": 0.995, "num_envs": 512},
+  "learning_rate": 0.0003,
+  "clip_param": 0.2,
+  "lam": 0.95,
+  "num_learning_epochs": 5,
+  "num_mini_batches": 4,
+  "entropy_coef": 0.001,
+  "min_noise_std": 0.05,
+  "max_noise_std": 1.5,
+  "warm_start_noise_std": 0.08,
+  "warm_start_learning_rate": 0.000003,
+  "warm_start_actor_learning_rate": 0.0000001,
+  "warm_start_clip_param": 0.02,
+  "warm_start_entropy_coef": 0.0,
+  "warm_start_desired_kl": 0.0005,
+  "value_loss_coef": 1.0,
+  "max_grad_norm": 1.0,
+  "desired_kl": 0.01,
+  "save_interval": 50
+}

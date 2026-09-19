@@ -1,0 +1,85 @@
+# loco_v2: fwwb-inspired low-level locomotion reward contract.
+# Raw values are multiplied by the 0.02 s control step by the RewardManager;
+# the terms below are the per-step shapes implemented in hier_v2/rewards_v2.py.
+
+[track_lin_vel_xy]
+weight = 1.5
+std = 0.25
+
+[track_ang_vel_z]
+weight = 0.6
+std = 0.25
+
+[feet_air_time]
+weight = 1.0
+threshold = 0.25
+command_threshold = 0.10
+
+[feet_clearance]
+weight = 0.30
+target_height = 0.09
+std = 0.04
+terrain_gain = 0.8
+max_extra_height = 0.12
+command_threshold = 0.10
+
+[feet_slide]
+weight = -0.20
+force_threshold = 1.0
+
+[feet_stumble]
+weight = -0.10
+force_ratio = 4.0
+
+[action_rate]
+weight = -0.01
+
+[action_smoothness]
+weight = -0.01
+
+[action_magnitude_limit]
+weight = -0.10
+soft_limit = 2.5
+hard_limit = 3.5
+
+[joint_acc]
+weight = -0.00000025
+
+[joint_torques]
+weight = -0.0001
+
+[joint_power]
+weight = -0.00002
+
+[dof_pos_limits]
+weight = -2.0
+soft_ratio = 0.9
+
+[torque_margin]
+weight = -0.05
+soft_ratio = 0.72
+max_torque = 23.5
+
+[lin_vel_z]
+weight = -2.0
+
+[ang_vel_xy]
+weight = -0.05
+
+[flat_orientation]
+weight = -1.5
+
+[base_height]
+weight = -1.0
+target_height = 0.33
+std = 0.05
+
+[hip_to_default]
+weight = -0.05
+
+[undesired_contacts]
+weight = -1.0
+threshold = 0.0
+
+[termination]
+weight = -10.0
