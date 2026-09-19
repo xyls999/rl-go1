@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Test / tooling caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Experiment artifacts (large, machine specific, or credentials bearing)
+checkpoints/
+runs/
+logs/
+reports/
+datasets/
+backups/
+media/raw/
+*.pt
+*.tfevents.*
+
+# Local scratch
+core.*
+nohup.out
+.tmp*
+*.bak.*
