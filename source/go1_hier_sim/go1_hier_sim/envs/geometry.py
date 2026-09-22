@@ -236,7 +236,7 @@ def build_tile(kind: str, difficulty: float, rng: np.random.Generator, obstacles
             peak = float(run_up * math.tan(math.radians(angle_deg)))
             # A cross-slope (camber) makes the ground uneven across the walking
             # band as well; it is tapered to zero at the block ends.
-            camber = float(rng.uniform(-1.0, 1.0)) * math.radians(6.0 + 6.0 * difficulty)
+            camber = float(rng.uniform(-1.0, 1.0)) * math.radians(3.0 + 3.0 * difficulty)
             x1 = x0 + run_up + run_down
             knees = np.array([x0, x0 + run_up, x1])
             profile = np.array([0.0, peak, 0.0])
@@ -272,7 +272,7 @@ def build_tile(kind: str, difficulty: float, rng: np.random.Generator, obstacles
             plateau = float(rng.uniform(0.50, 0.90))
             top = float(run_up * math.tan(math.radians(angle_deg)))
             drop = float(min(0.16, max(0.06, top)))
-            camber = float(rng.uniform(-1.0, 1.0)) * math.radians(5.0 + 5.0 * difficulty)
+            camber = float(rng.uniform(-1.0, 1.0)) * math.radians(2.5 + 2.5 * difficulty)
             x1 = x0 + run_up
             x2 = x1 + plateau
             x3 = x2 + run_down
@@ -302,15 +302,26 @@ def build_tile(kind: str, difficulty: float, rng: np.random.Generator, obstacles
             )
             return x3
 
-        def stairs_block(x0):
-            count = int(rng.integers(3, 6))
+        def stairs_block(x0, steps=None, kind="stairs", max_end=None, tread_range=None):
+            # Short stairways mix 3-5 risers. The long variant below reuses this
+            # construction with 7-9 treads so the policy also sees sustained climbs
+            # and descents instead of isolated steps.
+            count = int(rng.integers(3, 6)) if steps is None else int(steps)
+            low_tread, high_tread = (
+                (COURSE_TREAD_DEPTH - 0.03, COURSE_TREAD_DEPTH + 0.03)
+                if tread_range is None
+                else (float(tread_range[0]), float(tread_range[1]))
+            )
+            if max_end is not None:
+                # Truncate the stairway to the space actually left, so a long
+                # staircase can never push the route past the feature end. Three
+                # risers per direction is the smallest useful staircase.
+                headroom = max(0.0, float(max_end) - x0)
+                fits = int((headroom - 0.30) // (2.0 * high_tread))
+                count = max(3, min(count, fits))
             rise = rng.uniform(0.04, 0.04 + 0.12 * difficulty, size=count)
-            tread_up = rng.uniform(
-                COURSE_TREAD_DEPTH - 0.03, COURSE_TREAD_DEPTH + 0.03, size=count
-            )
-            tread_down = rng.uniform(
-                COURSE_TREAD_DEPTH - 0.03, COURSE_TREAD_DEPTH + 0.03, size=count
-            )
+            tread_up = rng.uniform(low_tread, high_tread, size=count)
+            tread_down = rng.uniform(low_tread, high_tread, size=count)
             # The descent reorders the same riser heights, so the stairway keeps
             # varied step heights while returning exactly to the course datum.
             descent = rng.permutation(rise)
@@ -341,7 +352,7 @@ def build_tile(kind: str, difficulty: float, rng: np.random.Generator, obstacles
             treads.extend(float(value) for value in tread_down)
             blocks.append(
                 {
-                    "kind": "stairs",
+                    "kind": str(kind),
                     "start": float(x0),
                     "end": float(cursor),
                     "peak": float(np.sum(rise)),
@@ -349,6 +360,17 @@ def build_tile(kind: str, difficulty: float, rng: np.random.Generator, obstacles
                 }
             )
             return cursor
+
+        def long_stairs_block(x0):
+            # 7-9 risers per direction: ~6-7 m of continuous staircase inside one
+            # tile, still capped by the same kinematic envelope (riser <= 0.16 m,
+            # tread >= 0.35 m) and still returning exactly to the course datum. The
+            # riser count shrinks automatically when the short blocks ahead of it
+            # consumed most of the feature span.
+            return stairs_block(
+                x0, steps=int(rng.integers(7, 10)), kind="long_stairs",
+                max_end=COURSE_FEATURE_END - 8.0, tread_range=(0.35, 0.39),
+            )
 
         def rough_block(x0, x1=None):
             length = float(rng.uniform(1.00, 2.20)) if x1 is None else float(x1) - x0
@@ -385,24 +407,32 @@ def build_tile(kind: str, difficulty: float, rng: np.random.Generator, obstacles
         # route always mixes grades, uneven stairways, rough ground and bumps
         # instead of leaving the mix to chance. The rest of the span is filled from
         # a reshuffled short-block pool. Block length bounds keep the mix out of
-        # the level approach: a stairway is at most 5 treads * 0.43 m per direction
-        # plus a landing (4.90 m), a slope at most 3.2 m, a rough patch 2.2 m and a
-        # bump group 2.0 m, and the opening plus fillers never exceeds
-        # COURSE_FEATURE_END, which the check below enforces.
+        # the level approach: a long stairway is at most 9 treads * 0.43 m per
+        # direction plus a landing (8.4 m), a short stairway 5 treads (4.9 m), a
+        # slope at most 4.0 m, a rough patch 2.2 m and a bump group 2.0 m, and the
+        # opening plus fillers never exceeds COURSE_FEATURE_END, which the check
+        # below enforces. The opening guarantees one of every block kind and three
+        # separate stairways (two short, one long) so every tile contains
+        # sustained climbing and descending.
         opening = (slope_block, ledge_block, stairs_block, stairs_block, rough_block, bumps_block)
-        graded_builders = (rough_block, bumps_block, slope_block, ledge_block)
+        graded_builders = (rough_block, bumps_block, slope_block, ledge_block, stairs_block)
         flat_builders = (rough_block, bumps_block)
         cursor = COURSE_LEAD_IN_END
         for index in rng.permutation(len(opening)):
             cursor = opening[int(index)](cursor)
-        while cursor < COURSE_FEATURE_END - 5.0:
+        # The long stairway closes the guaranteed opening and truncates itself to
+        # whatever span is left, so the mix cannot overrun the feature end.
+        cursor = long_stairs_block(cursor)
+        # Fill thresholds are set so the longest remaining block still fits before
+        # COURSE_FEATURE_END: 5.20 m for the graded pool, 2.20 m for the flat pool.
+        while cursor < COURSE_FEATURE_END - 5.30:
             for index in rng.permutation(len(graded_builders)):
-                if cursor >= COURSE_FEATURE_END - 5.0:
+                if cursor >= COURSE_FEATURE_END - 5.30:
                     break
                 cursor = graded_builders[int(index)](cursor)
-        while cursor < COURSE_FEATURE_END - 2.2:
+        while cursor < COURSE_FEATURE_END - 2.30:
             for index in rng.permutation(len(flat_builders)):
-                if cursor >= COURSE_FEATURE_END - 2.2:
+                if cursor >= COURSE_FEATURE_END - 2.30:
                     break
                 cursor = flat_builders[int(index)](cursor)
         if COURSE_FEATURE_END - cursor > 0.10:
@@ -434,6 +464,10 @@ def build_tile(kind: str, difficulty: float, rng: np.random.Generator, obstacles
             "tread_depth_min": float(min(treads) if treads else COURSE_TREAD_DEPTH),
             "blocks": blocks,
             "feature_kinds": sorted({block["kind"] for block in blocks}),
+            "long_stairways": sorted(
+                block["steps"] for block in blocks if block["kind"] == "long_stairs"
+            ),
+            "stairway_count": sum(1 for block in blocks if block["kind"] in ("stairs", "long_stairs")),
             "feature_end": float(COURSE_FEATURE_END),
             "flat_approach_m": float(START_IN_TILE[0] + 33.10 - COURSE_FEATURE_END),
             "finish_start_offset": 33.10,
