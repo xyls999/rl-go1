@@ -7,8 +7,15 @@ from pathlib import Path
 
 import torch
 
-from go1_hier_sim.contracts import LOCO_OBS_DIM, NAV_OBS_DIM
+from go1_hier_sim.contracts import (
+    LOCO_OBS_DIM,
+    NAV_OBS_DIM,
+    RELIEF_COLS,
+    RELIEF_DIM,
+    RELIEF_ROWS,
+)
 from go1_hier_sim.envs.geometry import COURSE_GOAL_OFFSET
+from go1_hier_sim.hier_v2.relief import relief_map
 from go1_hier_sim.hier_v2.model_v2 import (
     EncoderActorCore,
     EncoderCriticCore,
@@ -272,6 +279,47 @@ class LocoV2TermTests(unittest.TestCase):
         self.assertEqual(terms["termination"].tolist(), [1.0, 0.0, 1.0])
 
 
+class ReliefMapTests(unittest.TestCase):
+    """The schema-5 relief map must stay finite even when probes miss the mesh."""
+
+    def test_flat_ground_is_zero_relief_with_full_confidence(self):
+        hit_z = torch.full((2, RELIEF_ROWS, RELIEF_COLS), 0.31)
+        face_hit = torch.ones((2, RELIEF_ROWS, RELIEF_COLS), dtype=torch.bool)
+        relief, confidence = relief_map(hit_z, face_hit)
+        self.assertEqual(relief.shape, (2, RELIEF_DIM))
+        self.assertEqual(confidence.shape, (2, RELIEF_DIM))
+        torch.testing.assert_close(relief, torch.zeros_like(relief))
+        torch.testing.assert_close(confidence, torch.ones_like(confidence))
+
+    def test_missed_probes_are_unknown_and_never_nan(self):
+        # A probe that misses the mesh returns a non-finite hit. Subtracting the
+        # reference row from an unmasked infinity turned the whole map into NaN
+        # and killed a training run, so this is the regression test.
+        hit_z = torch.full((1, RELIEF_ROWS, RELIEF_COLS), 0.30)
+        face_hit = torch.ones((1, RELIEF_ROWS, RELIEF_COLS), dtype=torch.bool)
+        hit_z[0, 0, 0] = float("inf")
+        hit_z[0, 2, 5] = float("nan")
+        face_hit[0, 0, 0] = False
+        face_hit[0, 2, 5] = False
+        relief, confidence = relief_map(hit_z, face_hit)
+        self.assertTrue(bool(torch.isfinite(relief).all()))
+        self.assertEqual(float(confidence[0, 0]), 0.0)
+        self.assertEqual(float(confidence[0, 2 * RELIEF_COLS + 5]), 0.0)
+        self.assertEqual(float(relief[0, 0]), 0.0)
+        self.assertEqual(float(relief[0, 2 * RELIEF_COLS + 5]), 0.0)
+
+    def test_a_step_ahead_reads_a_positive_gradient(self):
+        hit_z = torch.full((1, RELIEF_ROWS, RELIEF_COLS), 0.30)
+        face_hit = torch.ones((1, RELIEF_ROWS, RELIEF_COLS), dtype=torch.bool)
+        hit_z[0, 1:, :] = 0.46
+        relief, confidence = relief_map(hit_z, face_hit)
+        grid = relief.view(RELIEF_ROWS, RELIEF_COLS)
+        centre = RELIEF_COLS // 2
+        self.assertAlmostEqual(float(grid[0, centre]), 0.0, places=6)
+        self.assertGreater(float(grid[1, centre]), 0.0)
+        self.assertEqual(float(confidence.view(RELIEF_ROWS, RELIEF_COLS)[1, centre]), 1.0)
+
+
 class NavV2TrackerTests(unittest.TestCase):
     def setUp(self):
         self.cfg = load_nav_v2_rewards(ROOT / "configs" / "rewards_nav_v2.toml")
@@ -289,6 +337,28 @@ class NavV2TrackerTests(unittest.TestCase):
         terms = tracker.step(nav_inputs(2, distance=5.0))
         self.assertEqual(float(terms["path_progress"].sum()), 0.0)
 
+    def test_command_rate_penalises_commanded_velocity_jumps(self):
+        tracker = NavV2Tracker(1, "cpu", self.cfg)
+        first = tracker.step(nav_inputs(1, distance=5.0))
+        self.assertEqual(float(first["command_rate_l2"][0]), 0.0)
+
+        # Repeating the same command must be free.
+        steady = tracker.step(nav_inputs(1, distance=4.5))
+        self.assertAlmostEqual(float(steady["command_rate_l2"][0]), 0.0, places=6)
+
+        # nav_inputs commands 0.6 m/s; a drop of exactly one scale unit costs 1.
+        jump = nav_inputs(1, distance=4.0)
+        jump.command = torch.tensor([[0.4, 0.0, 0.0]])
+        terms = tracker.step(jump)
+        self.assertAlmostEqual(float(terms["command_rate_l2"][0]), 1.0, places=5)
+
+        # A reset sample carries no previous command, so it cannot be penalised.
+        reset = nav_inputs(1, distance=4.0)
+        reset.command = torch.tensor([[-0.2, 0.0, 0.0]])
+        reset.done = torch.ones(1, dtype=torch.bool)
+        terms = tracker.step(reset)
+        self.assertEqual(float(terms["command_rate_l2"][0]), 0.0)
+
     def test_approach_rewards_progress_and_retreat_penalises(self):
         forward = nav_inputs(2, distance=4.5)
         terms = self.tracker.step(forward)
@@ -299,6 +369,26 @@ class NavV2TrackerTests(unittest.TestCase):
         retreat.command = torch.zeros(2, 3)
         terms = self.tracker.step(retreat)
         self.assertLess(float(terms["path_progress"][0]), 0.0)
+
+    def test_command_stability_metrics_track_deviation(self):
+        tracker = NavV2Tracker(1, "cpu", self.cfg)
+        tracker.step(nav_inputs(1, distance=5.0))
+
+        jump = nav_inputs(1, distance=4.5)
+        jump.command = torch.tensor([[0.2, 0.0, 0.0]])
+        tracker.step(jump)
+
+        metrics = tracker.metrics()
+        # One counted step with a 0.4 m/s forward drop.
+        self.assertAlmostEqual(float(metrics["mean_command_delta_l1"][0]), 0.4, places=5)
+        self.assertAlmostEqual(
+            float(metrics["command_step_large_fraction"][0]), 1.0, places=5
+        )
+
+        tracker.reset()
+        metrics = tracker.metrics()
+        self.assertEqual(float(metrics["mean_command_delta_l1"][0]), 0.0)
+        self.assertEqual(float(metrics["command_step_large_fraction"][0]), 0.0)
 
     def test_reach_goal_fires_once(self):
         tracker = NavV2Tracker(1, "cpu", self.cfg)

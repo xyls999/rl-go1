@@ -216,6 +216,7 @@ class RewardsCfg:
     )
     obstacle_evasion = RewardTermCfg(func=locomotion_reward, weight=0.0, params={"name": "obstacle_evasion"})
     navigation_time = RewardTermCfg(func=locomotion_reward, weight=0.0, params={"name": "navigation_time"})
+    command_rate_l2 = RewardTermCfg(func=locomotion_reward, weight=0.0, params={"name": "command_rate_l2"})
     nav_termination = RewardTermCfg(func=locomotion_reward, weight=0.0, params={"name": "termination"})
     # loco_v2 terms use a loco2_ prefix so the validated Stage-1 names stay intact
     loco2_feet_air_time = RewardTermCfg(func=locomotion_reward, weight=0.0, params={"name": "loco2_feet_air_time"})
@@ -292,7 +293,7 @@ NAV_V2_CFG_TERMS = {
     "track_lin_vel_xy", "track_ang_vel_z", "path_progress", "bearing_progress",
     "reach_goal", "settled_goal", "goal_braking", "stuck_duration", "unsafe_tilt",
     "tilt_recovery", "wall_proximity_brake", "obstacle_evasion", "navigation_time",
-    "nav_termination",
+    "command_rate_l2", "nav_termination",
 }
 
 LOCO_V2_CFG_TERMS = {

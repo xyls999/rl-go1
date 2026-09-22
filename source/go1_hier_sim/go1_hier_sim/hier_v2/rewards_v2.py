@@ -84,6 +84,9 @@ NAV_V2_FIELDS = {
     },
     "obstacle_evasion": {"weight", "wall_score_threshold", "turn_threshold"},
     "navigation_time": {"weight"},
+    # Penalises per-step change of the commanded velocity: the speed layer must
+    # pick a stable command instead of chattering between slow and fast.
+    "command_rate_l2": {"weight", "scale"},
     "undesired_contacts": {"weight", "threshold"},
     "termination": {"weight"},
 }
@@ -160,6 +163,8 @@ def load_nav_v2_rewards(path: str | Path):
     for name in ("track_lin_vel_xy", "track_ang_vel_z"):
         if rewards[name]["std"] <= 0:
             raise ValueError(f"nav_v2 reward {name}.std must be positive")
+    if rewards["command_rate_l2"]["scale"] <= 0:
+        raise ValueError("nav_v2 command_rate_l2.scale must be positive")
     progress = rewards["path_progress"]
     if progress["max_speed"] <= 0:
         raise ValueError("nav_v2 path_progress.max_speed must be positive")
@@ -435,6 +440,14 @@ class NavV2Tracker:
         self._previous_tilt = torch.zeros(self.num_envs, device=self.device)
         self._previous_tilt_valid = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self._reached = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self._previous_command = torch.zeros(self.num_envs, 3, device=self.device)
+        self._previous_command_valid = torch.zeros(
+            self.num_envs, dtype=torch.bool, device=self.device
+        )
+        # Episode accumulators for the reported command-stability metrics.
+        self._command_delta_abs_sum = torch.zeros(self.num_envs, device=self.device)
+        self._command_delta_large = torch.zeros(self.num_envs, device=self.device)
+        self._command_delta_samples = torch.zeros(self.num_envs, device=self.device)
 
     def reset(self, env_ids=None):
         if env_ids is None:
@@ -444,6 +457,11 @@ class NavV2Tracker:
             self._previous_tilt.zero_()
             self._previous_tilt_valid.zero_()
             self._reached.zero_()
+            self._previous_command.zero_()
+            self._previous_command_valid.zero_()
+            self._command_delta_abs_sum.zero_()
+            self._command_delta_large.zero_()
+            self._command_delta_samples.zero_()
             return
         ids = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
         if ids.numel() == 0:
@@ -454,6 +472,11 @@ class NavV2Tracker:
         self._previous_tilt[ids] = 0
         self._previous_tilt_valid[ids] = False
         self._reached[ids] = False
+        self._previous_command[ids] = 0
+        self._previous_command_valid[ids] = False
+        self._command_delta_abs_sum[ids] = 0
+        self._command_delta_large[ids] = 0
+        self._command_delta_samples[ids] = 0
 
     def step(self, inputs: NavV2Inputs) -> dict[str, torch.Tensor]:
         cfg = self.cfg
@@ -579,6 +602,26 @@ class NavV2Tracker:
         ).to(inputs.distance.dtype) * inputs.command[:, 0].clamp(min=0.0)
 
         terms["navigation_time"] = torch.ones_like(inputs.distance)
+        # Command stability: a per-step jump in the commanded velocity costs a
+        # squared, scale-normalised penalty so the speed layer keeps its output
+        # steady unless the terrain actually demands a change.
+        rate_cfg = cfg["command_rate_l2"]
+        command_change = (inputs.command - self._previous_command).abs()
+        counted = self._previous_command_valid & ~done
+        command_step = (inputs.command - self._previous_command) / float(rate_cfg["scale"])
+        command_rate = command_step.square().sum(-1)
+        terms["command_rate_l2"] = torch.where(
+            counted, command_rate, torch.zeros_like(command_rate)
+        )
+        self._command_delta_abs_sum += torch.where(
+            counted, command_change.sum(-1), torch.zeros_like(command_change[:, 0])
+        )
+        self._command_delta_large += torch.where(
+            counted & (command_change[:, 0] > 0.10),
+            torch.ones_like(command_change[:, 0]),
+            torch.zeros_like(command_change[:, 0]),
+        )
+        self._command_delta_samples += counted.to(command_change.dtype)
         terms["undesired_contacts"] = (
             inputs.contact_count > float(cfg["undesired_contacts"]["threshold"])
         ).to(inputs.distance.dtype)
@@ -591,6 +634,8 @@ class NavV2Tracker:
         self._previous_tilt.copy_(tilt.detach())
         self._previous_tilt_valid.copy_(~done)
         self._reached.copy_((self._reached | newly_reached) & ~done)
+        self._previous_command.copy_(inputs.command.detach())
+        self._previous_command_valid.copy_(~done)
 
         for name, value in terms.items():
             require_finite(value, f"nav_v2 reward {name}")
@@ -604,3 +649,18 @@ class NavV2Tracker:
         if total is None:
             raise ValueError("nav_v2 reward contract is empty")
         return total
+
+    def metrics(self) -> dict[str, torch.Tensor]:
+        """Reported command-stability numbers, one value per environment.
+
+        ``mean_command_delta_l1`` is the mean per-step change of the commanded
+        velocity (m/s, summed over vx/vy/wz) and ``command_step_large_fraction``
+        is the share of steps whose forward command jumped by more than 0.10 m/s.
+        Lower is steadier; they are reported in every evaluation report so the
+        stability of the speed layer is measured instead of assumed.
+        """
+        samples = self._command_delta_samples.clamp_min(1.0)
+        return {
+            "mean_command_delta_l1": self._command_delta_abs_sum / samples,
+            "command_step_large_fraction": self._command_delta_large / samples,
+        }

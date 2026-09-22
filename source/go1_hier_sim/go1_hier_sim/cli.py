@@ -604,6 +604,16 @@ def _evaluate(args):
         })
         report["passed"] = (args.terrain == "course" and report["success_rate"] >= .90 and
                             report["collision_rate"] <= .05)
+        # Speed-layer stability is reported, not assumed: the mean per-step change
+        # of the commanded velocity and the share of large forward jumps.
+        stability = [item for item in records if "mean_command_delta_l1" in item]
+        if stability:
+            report["mean_command_delta_l1"] = sum(
+                item["mean_command_delta_l1"] for item in stability
+            ) / len(stability)
+            report["command_step_large_fraction"] = sum(
+                item["command_step_large_fraction"] for item in stability
+            ) / len(stability)
     output = WORKSPACE / "reports" / f"evaluate_{args.stage}_{_run_id(args)}.json"
     write_json(output, report)
     print(json.dumps(report, indent=2))

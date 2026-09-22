@@ -50,6 +50,7 @@ from .geometry import COURSE_GOAL_OFFSET, TILE_SIZE, VisibleSurfaceMemory, camer
 TRUNK_CONTACT_FORCE = 25.0
 COLLISION_SUSTAIN_STEPS = 5
 from ..hier_v2.rewards_v2 import finish_crossed
+from ..hier_v2.relief import relief_map
 
 
 class HierarchicalRuntime:
@@ -526,14 +527,17 @@ class HierarchicalRuntime:
             return_distance=True, return_face_id=True,
         )
         hit_z = hits[..., 2].view(self.num_envs, RELIEF_ROWS, RELIEF_COLS)
-        valid = (face_id >= 0).view(self.num_envs, RELIEF_ROWS, RELIEF_COLS)
-        valid_float = valid.to(hit_z.dtype)
-        centre = hit_z[:, 0, RELIEF_COLS // 2]
-        mean_hit = (hit_z * valid_float).sum(dim=(1, 2)) / valid_float.sum(dim=(1, 2)).clamp_min(1.0)
-        reference = torch.where(valid[:, 0, RELIEF_COLS // 2], centre, mean_hit)
-        gradient = ((hit_z - reference[:, None, None]) / rows[None, :, None]).clamp(-1.0, 1.0)
-        gradient = torch.where(valid, gradient, torch.zeros_like(gradient))
-        return gradient.reshape(self.num_envs, -1), valid_float.reshape(self.num_envs, -1), hits
+        face_hit = (face_id >= 0).view(self.num_envs, RELIEF_ROWS, RELIEF_COLS)
+        gradient, valid_float = relief_map(hit_z, face_hit)
+        # A missed probe comes back non-finite; keep those points finite before
+        # they reach the camera frustum and the visibility memory, which would
+        # otherwise propagate NaN through the observable relief path as well.
+        safe_hits = torch.where(
+            torch.isfinite(hits).all(-1, keepdim=True),
+            hits,
+            root[:, None, :].expand_as(hits),
+        )
+        return gradient, valid_float, safe_hits
 
     def _occlusion_visible(self, points, in_frustum, camera_position):
         delta = points - camera_position[:, None, :]
@@ -715,7 +719,19 @@ class HierarchicalRuntime:
 
     def _update_failures(self):
         gravity_z = self.robot.data.projected_gravity_b[:, 2]
-        self._fallen |= (self.robot.data.root_link_pos_w[:, 2] < 0.18) | (gravity_z > -0.5)
+        newly_fallen = (self.robot.data.root_link_pos_w[:, 2] < 0.18) | (gravity_z > -0.5)
+        if os.environ.get("GO1_DEBUG_FALL") == "1" and bool((newly_fallen & ~self._fallen).any()):
+            for env_id in torch.nonzero(newly_fallen & ~self._fallen, as_tuple=False).flatten().tolist():
+                local = (self.robot.data.root_link_pos_w[env_id, :2]
+                         - self.env.scene.env_origins[env_id, :2])
+                print("FALL_EVENT", "env=%d" % env_id,
+                      "course_x=%.2f" % float(local[0].item()),
+                      "z=%.3f" % float(self.robot.data.root_link_pos_w[env_id, 2].item()),
+                      "gravity_z=%.3f" % float(gravity_z[env_id].item()),
+                      "speed=%.2f" % float(torch.linalg.vector_norm(
+                          self.robot.data.root_lin_vel_b[env_id, :2]).item()),
+                      flush=True)
+        self._fallen |= newly_fallen
         if self._collision_ids:
             forces = self.contact_sensor.data.net_forces_w[:, self._collision_ids]
             force_norms = torch.linalg.vector_norm(forces, dim=-1)
@@ -742,6 +758,14 @@ class HierarchicalRuntime:
                         key=lambda row: row[1], reverse=True,
                     )
                     print("COLLISION_EVENT", "env=%d" % env_id,
+                          "course_x=%.2f course_y=%.2f" % (
+                              float(self.robot.data.root_link_pos_w[env_id, 0].item()
+                                    - self.env.scene.env_origins[env_id, 0].item()),
+                              float(self.robot.data.root_link_pos_w[env_id, 1].item()
+                                    - self.env.scene.env_origins[env_id, 1].item()),
+                          ),
+                          "speed=%.2f" % float(torch.linalg.vector_norm(
+                              self.robot.data.root_lin_vel_b[env_id, :2]).item()),
                           [(name, round(force, 2)) for name, force in rows[:8]], flush=True)
         local = self.robot.data.root_link_pos_w[:, :2] - self.env.scene.env_origins[:, :2]
         self._out_of_bounds |= (local[:, 0] < -2.8) | (local[:, 0] > TILE_SIZE - 3.2) | (local[:, 1].abs() > 7.8)
@@ -1342,7 +1366,7 @@ class HierarchicalRuntime:
         gait_count = self._gait_metric_samples.clamp_min(1.0)
         elapsed_seconds = gait_count * CONTROL_DT
         touchdown_hz = self._touchdown_count / elapsed_seconds[:, None]
-        return {
+        metrics = {
             "success": self._success.clone(),
             "collision": self._collision.clone(),
             "fallen": self._fallen.clone(),
@@ -1363,6 +1387,9 @@ class HierarchicalRuntime:
                 / touchdown_hz.mean(dim=-1).clamp_min(1.0e-4)
             ),
         }
+        if self._nav_v2 is not None:
+            metrics.update(self._nav_v2.metrics())
+        return metrics
 
     def validate_observations(self):
         self.refresh()

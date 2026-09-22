@@ -84,6 +84,13 @@ turn_threshold = 0.12
 [navigation_time]
 weight = -0.002
 
+[command_rate_l2]
+# Stability of the speed layer: a per-navigation-step jump in the commanded
+# velocity is penalised after normalising by `scale`, so the policy keeps its
+# speed steady on smooth ground instead of chattering slow/fast every 0.1 s.
+weight = -0.30
+scale = 0.20
+
 [undesired_contacts]
 weight = -1.0
 threshold = 0.0
