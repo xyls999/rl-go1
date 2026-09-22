@@ -74,7 +74,12 @@ UWB尚未选型，必须能给相对xy，或同一坐标系双方位置加机器
 到达率≥90%、身体碰撞率≤5%；学生距教师不超过10百分点；Stage4三个seed改善且碰撞/跌倒不恶化。
 仿真成功不等于真机验证。每份checkpoint保存接口、模型哈希、上游哈希、配置和验收状态。
 
-实施状态：四阶段代码和必要数据链路已部署，尚无通过上述能力验收的新策略。
+实施状态（2026-09-22）：第一层与第二层均已在**地形 v3**上重训并逐格评测；两层的实测认证带都是
+**难度 ≤0.75**（第一层 12/12 格 PASS，第二层 0.50 → 100%、0.75 → 98.83%）。第一层已冻结
+（`stage1/2026-09-20_16-30-00_go1-stage1-terrain-v3-hard/model_799.pt`），第二层最终模型为
+`stage2/2026-09-21_17-00-00_go1-stage2-speed-v3-hard/model_799.pt`（难带完成率 92.19%、指令抖动 0.0293）。
+尚未完成：`*.validated.pt` 形式的正式认证（第二层仍缺独立门禁协议）、Stage3/4 视觉蒸馏、真机验证。
+下方按时间顺序记录每一步的实测证据。
 2026-09-09远端31项完整测试通过；真实Isaac检查已覆盖四种混合地形、当时557/564维观测、物理步进，
 并在GPU0验证2路真实深度相机、2×60×80深度输入、时间戳队列和可观察地形教师。
 GPU0混合地形4环境完成128步rollout和一次从`configs/ppo.json`读取参数的RSL-RL PPO更新，产出
@@ -467,3 +472,93 @@ yaw RMSE 0.0444，报告为`reports/evaluate_stage1_2026-09-10_12-16-04.json`；
   `logs/layer2_cells.log`。
 - 第二层**尚未认证**：`certify_checkpoint` 的 stage2 路径仍要求 `terrain=="mixed"` 且 `passed`
   （与 stage1 早先是同一个死锁）；若需要认证，需为第二层定义独立门禁协议。
+
+## 2026-09-20 地形 v3：更长、更多楼梯、含"长楼梯段"
+
+- 用户要求：地形更长、楼梯更多更复杂，掺入缓坡与矮楼梯；完成点仍在"跨过最后一段后约 1 m"。
+- `envs/geometry.py` 变更：
+  - `stairs_block(...)` 参数化（`steps` / `kind` / `max_end` / `tread_range`）；新增 `long_stairs_block`
+    （7–9 级、`tread_range=(0.35, 0.39)`、`max_end=COURSE_FEATURE_END-8.0`，kind=`long_stairs`）。
+  - 组装：先洗牌 6 块必含组合（slope/ledge/stairs/stairs/rough/bumps），**最后追加一段长楼梯**（自截断防越界）；
+    再用短块填充到 `FE-5.30`，最后用起伏面补到 `FE-2.30`。**内外层阈值必须一致** —— 曾因外层 −1.8、
+    内层 −2.2 不一致导致无限循环（pytest 100 % CPU 卡死 5 分钟）。
+  - 元数据新增 `long_stairways` / `stairway_count`。
+- 12 seed 剖面实测：每 tile **11–13 块**、**3–4 段楼梯**（含 1 段长楼梯 5–8 级）、单级 ≤0.157 m、
+  踏面 ≥0.350 m、坡度 ≤29.9°、侧倾 ≤5.30°、**面数 ≤16.6k/tile → 256 环境 4.26 M 面**（安全）。
+- 物理包线不变：单级 ≤0.16 m、坡度 ≤30°、踏面 ≥0.35 m、不做下凹（落差用 `ledge_block`）。
+
+## 2026-09-20/21 第一层 v3 训练与包线（认证带 = 难度 ≤0.75）
+
+- 训练路线（冻结前）：
+  1. `2026-09-20_14-00-00_go1-stage1-terrain-v3-broad`：900 轮、难度 0.20–1.00、速度 0.30–1.00，
+     init `v2-lowcamber-hard2/model_799.pt`；
+  2. `2026-09-20_16-30-00_go1-stage1-terrain-v3-hard`：800 轮、难度 0.85–1.00、速度 0.35–0.60（14:14 完成）。
+- **冻结第一层**：`checkpoints/stage1/2026-09-20_16-30-00_go1-stage1-terrain-v3-hard/model_799.pt`，
+  原奖励契约（`collision=-1.50`、`upright=0.20`、`base_orientation_l2=-0.35`、`base_roll_pitch_rate_l2=-0.08`）。
+- 三档（256 环境/256 回合/150 s）：easy(0.20–0.45) **99.61 %**、medium(0.45–0.75) **98.83 %**、
+  hard(0.85–1.00) **85.16 % / collision 11.33 % / fallen 3.52 %**。
+- 16 格门禁矩阵（难度 0.25/0.50/0.75/0.92 × 速度 0.3/0.5/0.8/1.0）：**0.25/0.50/0.75 三行 12 格全 PASS**
+  （97.27–100 %）；**0.92 行 4 格全 FAIL**（78.91 / 89.06 / 87.89 / 87.50 %）。→ **认证带 = 难度 ≤0.75（全速度）**；
+  0.4–0.6 m/s 内可放宽到 ≤0.85；0.88 在 ≥0.5 m/s 通过（92.19 %）。
+- 摔倒诊断（`GO1_DEBUG_FALL=1`）：22 次事件全部为倾斜判据、`gravity_z ∈ (−0.499, −0.406)`、机身高度正常、
+  实际速度 0.15–1.59 m/s（指令上限 0.60）→ **高速瞬时俯仰尖峰**，不是地形卡住或摔垮。
+
+## 2026-09-21 三个奖励塑形实验：全部负结果（已回退，勿重犯）
+
+| 实验 | 结果 | 结论 |
+|---|---|---|
+| `collision -1.50 → -4.0` | hard 83.98 % / collision 7.42 %↓ / fallen 8.59 %↑ | 失败总量守恒，只是在对角线两端互换 |
+| 回退 collision + 加强姿态（upright 0.40、orient −0.60、rp_rate −0.15） | hard 83.98 % / collision 5.86 % / fallen 10.16 % | 更差 |
+| 长楼梯单级封顶 0.14 m | hard 83.20 % / collision 14.06 % | 分布 shift，更差 |
+
+结论：难带约 15 % 的失败总量是**地形/平台能力上限**，改权重无效；要提升只能改地形或改第一层能力
+（第一层已按用户要求冻结）。契约备份：`/tmp/rewards_stage1_before_coll4.toml`（=原版，已恢复）、
+`/tmp/rewards_stage1_before_posture.toml`。
+
+## 2026-09-21/22 第二层 v3：指令稳定性奖励 + relief NaN 修复 + 最终结果
+
+- **新增奖励 `command_rate_l2`**（nav 契约 15 → **16 项**）：惩罚相邻控制步的指令跳变
+  `((cmd_t − cmd_{t−1})/scale)²`（scale 0.20、weight −0.30，属惩罚项）；新增指标
+  `mean_command_delta_l1` 与 `command_step_large_fraction` 写入 stage2 评测报告。注册需四处同步：
+  `rewards_v2.NAV_V2_FIELDS`、`NavV2Tracker`、`envs/config.RewardsCfg`、`NAV_V2_CFG_TERMS`。
+- **修掉一个必然崩溃的 bug**：`_relief_geometry` 未屏蔽未命中射线（`raycast_mesh` 未命中返回 `inf`）→
+  `inf − inf = NaN` → 整张起伏图 NaN → 训练在第 50 轮崩（`ValueError: live relief geometry contains NaN or infinity`）。
+  触发条件：狗靠近网格远端时 5 m 前视探针落到网格外。第一层从不触发（stage1 走 height-scanner 且 relief 置零）。
+  修法：新增纯函数 `hier_v2/relief.py::relief_map`（`isfinite` 屏蔽 + 分母下限），并把交给相机/可见性路径的点
+  也有限化；新增 3 个回归测试 → `./sim.sh test` = **103 通过**。修复后 2000 轮 0 报错。
+- 训练路线（冻结第一层 v3-hard/model_799）：
+  1. `2026-09-21_13-45-00_go1-stage2-speed-v3-broad`：1200 轮、难度 0.20–1.00、150 s（17:52 完成）；
+  2. `2026-09-21_17-00-00_go1-stage2-speed-v3-hard`：800 轮、难度 0.85–1.00、150 s（20:53 完成）。
+- **权威验收（256 环境/256 回合/150 s，同条件对照）**：
+
+  | 模型 | 难度 | completion | collision | fallen | `mean_command_delta_l1` |
+  |---|---|---|---|---|---|
+  | 旧 `speed-v1/model_400` | 0.90 | 90.63 % | 1.95 % | 7.42 % | 0.1878 |
+  | `broad1199`（phase A 终） | 0.50 | 99.61 % | 0.00 % | 0.39 % | 0.0630 |
+  | `broad1199` | 0.75 | 99.61 % | 0.39 % | 0.00 % | 0.0663 |
+  | `broad1199` | 0.90 | 91.41 % | 1.95 % | 6.64 % | 0.0691 |
+  | **`hard799`（phase B 终，采用）** | 0.50 | **100 %** | 0.00 % | 0.00 % | **0.0218** |
+  | **`hard799`** | 0.75 | **98.83 %** | 0.39 % | 0.78 % | **0.0255** |
+  | **`hard799`** | 0.90 | **92.19 %** | 1.56 % | 6.25 % | **0.0293** |
+
+  → 难带 **完成率 +1.6 pt 且指令抖动 ↓6.4×**（"速度更稳定"目标达成）；认证带 **难度 ≤0.75 三项全过**；
+  0.90 仍超包线（fallen 6.25 % > 5 %），与第一层自身难带上限一致。唯一退步：大跳变比例 0.67 % vs 0.53 %
+  （平时更平滑、偶发大修正）。
+- 最终第二层：`checkpoints/stage2/2026-09-21_17-00-00_go1-stage2-speed-v3-hard/model_799.pt`。
+- 视频：`media/two_layer_v3_course_d050.mp4`、`media/two_layer_v3_course_d090.mp4`（1 回合均 100 % 越线）。
+
+## 2026-09-22 关键修正：stage2 没有"速度带"这一维
+
+- `make_config` 只在 `stage == "locomotion"` 时把 `--speed-min/--speed-max` 写进指令范围；**stage2 固定
+  `0 ≤ vx ≤ 0.8`**（指令由策略自己产生），且 `speed_max > 0.8` 会在启动时被直接拒绝。
+- 因此：第二层的包线**只有难度一维**。此前按"速度 × 难度"跑的第二层格子里，同难度不同速度的格是**同一条件**
+  （实测四格结果逐位相同即为证据），其中 0.50@1.0 那格是被 `speed_max` 校验直接拒掉的。
+- 第一层的 16 格矩阵不受影响（stage1 的速度带有效）。
+- 新增第二层验收脚本 `scripts/eval_gate_stage2.sh`（只按难度遍历；参数：locomotion ckpt / nav ckpt /
+  episodes / difficulties / device / episode-seconds / env-count）。
+
+## 2026-09-22 工程提示：容器 IP 会变
+
+- 本容器曾以 `192.168.4.241:8022` 可达，2026-09-22 变为 **`10.200.212.241:8022`**（容器内网 192.168.42.6，
+  hostname `ff95dc483e0b` 不变）。训练/评测以 `setsid nohup` detached 运行，**网络中断不影响其继续**，
+  但会丢失观测；恢复后应 `pgrep -af 'scripts/sim.py train'` 并用 `grep 'Learning iteration' <log>` 重新对表。

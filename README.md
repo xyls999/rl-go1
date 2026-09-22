@@ -39,13 +39,14 @@
 | 动作 | **12** 关节位置偏移，50 Hz | **3** 速度指令 `vx, vy, wz`，10 Hz |
 | 地形输入 | 高度扫描 512 点 + 置信度 512 | 地形起伏图 72 点 + 置信度 72 |
 | 指令来源 | 训练时在冻结赛道方向上采样（含速度层给出的指令） | 策略自身输出，经平滑/时延后交给冻结的第一层 |
-| 评价 | 16 格矩阵（难度 × 速度）逐格越线完成率 | 4 格速度带越线完成率 |
-| 状态 | 已在旧赛道冻结并认证；新赛道重训中 | 旧赛道全部通过；新赛道重训中 |
+| 评价 | 16 格矩阵（难度 × 速度）逐格越线完成率 | 逐难度越线完成率 + **指令稳定性**（stage2 无速度带） |
+| 状态 | **已冻结**（地形 v3，认证带 难度 ≤0.75，12/12 格 PASS） | 地形 v3 重训完成，认证带 难度 ≤0.75（0.50 → 100 %、0.75 → 98.83 %） |
 
 演示视频（见 [第 7 节](#7-视频素材)）：
 
-- `media/layer1_speed_tracking_long_course.mp4` — 第一层单方向速度跟踪，跨越新长赛道
-- `media/two_layer_dense_easy.mp4` / `media/two_layer_dense_medium.mp4` — 两层联动跨越密集混杂赛道
+- `media/layer1_speed_tracking_long_course.mp4` — 第一层单方向速度跟踪，跨越长赛道
+- `media/two_layer_dense_easy.mp4` / `media/two_layer_dense_medium.mp4` — 两层联动跨越密集混杂 v1 赛道
+- `media/two_layer_v3_course_d050.mp4` / `media/two_layer_v3_course_d090.mp4` — 两层联动跨越**地形 v3**（难度 0.50 / 0.90）
 
 ---
 
@@ -179,7 +180,7 @@ checkpoint 加载时会比对 `interface_manifest()`；不匹配且不属于上�
 ## 3. 奖励函数设计
 
 奖励以 `configs/rewards_stage1_v20_paper.toml`（第一层，42 项）与 `configs/rewards_nav_v2.toml`
-（第二层，15 项）为**唯一真源**；`reward_config.py` 做严格模式校验（未知项、缺项、符号错误即拒绝启动），
+（第二层，16 项）为**唯一真源**；`reward_config.py` 做严格模式校验（未知项、缺项、符号错误即拒绝启动），
 并且奖励配置会写入 checkpoint 元数据，续训时校验一致。设计灵感来自 Rudin et al.,
 *Learning to Walk in Minutes* (CoRL 2021)。
 
@@ -235,10 +236,10 @@ checkpoint 加载时会比对 `interface_manifest()`；不匹配且不属于上�
 > 碰撞语义：**只有躯干等非足端部位**接触力连续 5 个控制步（0.1 s）超过 25 N 才判碰撞；
 > 腿部擦碰台阶不终止回合，而是通过分级代价整形。
 
-### 3.2 第二层（15 项）
+### 3.2 第二层（16 项）
 
 | 项 | 权重 | 说明 |
-|---|---:|---|
+|---|---|---|
 | `track_lin_vel_xy` / `track_ang_vel_z` | 0.15 / 0.10 | 对自身输出指令的执行跟踪 |
 | `path_progress` | 4.0 | 沿"起点 → 终点"投影的推进量（max_speed 0.80） |
 | `bearing_progress` | 0.25 | 朝目标方位的角向推进 |
@@ -247,11 +248,14 @@ checkpoint 加载时会比对 `interface_manifest()`；不匹配且不属于上�
 | `goal_braking` | −2.0 | 接近终点时超速未制动 |
 | `stuck_duration` | −1.5 | 长时间原地不动 |
 | `unsafe_tilt` / `tilt_recovery` | −8.0 / 0.60 | 危险倾角 / 倾角恢复 |
+| **`command_rate_l2`** | **−0.30** | **指令平滑**：`((cmd_t − cmd_{t−1})/0.20)²`，抑制相邻控制步的指令抖动 |
 | `wall_proximity_brake` / `obstacle_evasion` | **0.0** | 明确不做避障（保留实现，权重置零） |
 | `navigation_time` | −0.002 | 每步时间成本 |
 | `undesired_contacts` / `termination` | −1.0 / −250.0 | 非期望接触 / 任务失败 |
 
 **分层原则**：第二层奖励**不含任何关节级项**（它无法直接影响关节），关节级优化完全属于第一层。
+评测报告另含 `mean_command_delta_l1` 与 `command_step_large_fraction` 两个**指令稳定性指标**。
+
 
 ### 3.3 设计取舍与教训
 
@@ -273,19 +277,22 @@ checkpoint 加载时会比对 `interface_manifest()`；不匹配且不属于上�
 **40 m × 40 m** 的 tile（环境间距 44 m），特征区覆盖 **5.30 m → 35.00 m（≈29.7 m）**，
 最后是终点前的水平段与终点条带。
 
-**5 类地形块**（每块带 x 方向两端渐变，保证与基准面平滑衔接）：
+**6 类地形块**（每块带 x 方向两端渐变，保证与基准面平滑衔接）：
 
 | 类型 | 参数 | 作用 |
 |---|---|---|
 | `slope_block` | 上坡再下坡；坡度 `U(5°, 5°+25°·d)`，坡长 0.90–1.60 m，可带侧倾 | 上下坡 |
 | `stairs_block` | 3–5 级；单级 `U(0.04, 0.04+0.12·d)` m，踏面 `0.40±0.03` m，平台 0.30–0.60 m；下行用**随机重排**的等高集合 → 高矮交错且严格回落到基准 | 上下楼梯 |
+| **`long_stairs_block`** | **7–9 级长楼梯**，踏面 0.35–0.39 m，`max_end` 自截断保证不越过特征区末端 | **长楼梯段（v3 新增）** |
 | `ledge_block` | 爬升 → 短平台 → **单级 ≤0.16 m 的合法下落** → 回基准 | 盲台阶/落差 |
 | `rough_block` | 1.0–2.2 m 起伏面，幅度 ×1.8 | 不平整地面 |
 | `bumps_block` | 2–5 个高斯凸包，峰 0.04–0.06+0.06d m，宽 0.16–0.30 m | 连续凸起 |
 
-**生成策略**：先放置一个"必含全部 5 类"的起始组合（随机顺序），再用短块填充至接近特征区末端，
-剩余用起伏面补齐 —— 因此**每个 tile 都同时包含坡、楼梯、盲台阶、粗糙地与凸包**（13–15 段），
-且每 tile 至少 2 段楼梯、1–2 段坡。随机性由 tile 的 RNG 派生，同一 seed 可完整复现。
+**生成策略（v3）**：先放置一个"必含 6 类"的起始组合（随机顺序），**最后追加一段长楼梯**（自截断防越界），
+再用短块填充至 `FE−5.30`，剩余用起伏面补齐到 `FE−2.30` —— 因此每个 tile 都同时包含坡、楼梯、长楼梯、
+盲台阶、粗糙地与凸包（**11–13 段**），且每 tile 有 **3–4 段楼梯**。随机性由 tile 的 RNG 派生，同一 seed 可完整复现。
+
+> 填充阈值**内外层必须一致**（外层 −1.8 / 内层 −2.2 不一致会导致无限循环）。
 
 **物理包线**（由测试强制，防止生成不可跨越地形）：
 
@@ -295,7 +302,7 @@ checkpoint 加载时会比对 `interface_manifest()`；不匹配且不属于上�
 | 单级台阶 | ≤ **0.16 m** | 腿长 0.25+0.25 m，站立髋高 ≈0.365 m |
 | 踏面深度 | ≥ **0.35 m** | 0.6 m 躯干跨步需要 |
 | 终点前平地 | ≥ **1.10 m** | 保证越线判定与停下 |
-| 每 tile 三角面 | **≤ ~21 k** | 256 环境 ≈5.4 M 面；超过约 10 M 面会导致 PhysX **cooking 失败** → 地形网格缺失 → 全环境摔倒 |
+| 每 tile 三角面 | **≤ ~17 k** | 256 环境 ≈4.3 M 面；超过约 10 M 面会导致 PhysX **cooking 失败** → 地形网格缺失 → 全环境摔倒 |
 
 > 赛道网格分块与面数预算是**硬约束**：曾因单 tile 62 k 面（256 环境 16.1 M 面）触发
 > `cooking failure`，表现为"completion = 0、fallen = 1.0"而诊断日志只在启动时留下 2 行警告。
@@ -310,9 +317,9 @@ checkpoint 加载时会比对 `interface_manifest()`；不匹配且不属于上�
 { "num_steps_per_env": 48, "gamma": 0.99, "learning_rate": 3e-4, "clip_param": 0.2,
   "lam": 0.95, "num_learning_epochs": 5, "num_mini_batches": 4, "entropy_coef": 0.005,
   "min_noise_std": 0.05, "max_noise_std": 1.0,
-  "warm_start_noise_std": 0.45, "warm_start_learning_rate": 3e-4,
-  "warm_start_actor_learning_rate": 5e-5, "warm_start_clip_param": 0.1,
-  "warm_start_entropy_coef": 0.002, "value_loss_coef": 1.0, "max_grad_norm": 1.0,
+  "warm_start_noise_std": 0.15, "warm_start_learning_rate": 1e-5,
+  "warm_start_actor_learning_rate": 2e-6, "warm_start_clip_param": 0.02,
+  "warm_start_entropy_coef": 2e-4, "value_loss_coef": 1.0, "max_grad_norm": 1.0,
   "desired_kl": 0.01, "save_interval": 50 }
 ```
 
@@ -331,6 +338,9 @@ checkpoint 加载时会比对 `interface_manifest()`；不匹配且不属于上�
 - 完成判定：**两只前脚同时进入终点矩形条带**且回合结束（`finish_crossed`），
   同时满足 `fallen=0`、`out_of_bounds=0`；碰撞单独统计。
 - 评测为确定性策略（`act_inference`，无探索噪声）。
+- **第二层没有速度带**：`--speed-min/--speed-max` 只对 stage1 生效（`make_config` 仅在
+  `stage == "locomotion"` 时写入指令范围；stage2 的指令由策略自己产生，固定 `0 ≤ vx ≤ 0.8`，
+  且 `speed_max > 0.8` 会被直接拒绝）。**第二层的包线只有"难度"一维。**
 
 ### 5.3 冻结门（16 格矩阵）
 
@@ -343,6 +353,14 @@ completion ≥ 0.90  ∧  collision ≤ 0.10  ∧  fallen ≤ 0.05
 
 全部格子通过后，`scripts/gate_record.py` 生成一份门禁记录，`certify_checkpoint` 会**重新核算**
 每格并写入 `envelope`，得到 `*.validated.pt`。低层只有拿到该记录才允许被冻结并交给上层使用。
+
+第二层使用 `scripts/eval_gate_stage2.sh`（**只按难度遍历**，stage2 无速度带）：
+
+```bash
+./scripts/eval_gate_stage2.sh <locomotion-ckpt> <navigation-ckpt> 256 0.5,0.75,0.9 cuda:0 150 256
+```
+
+判定口径与第一层一致，并额外打印 `mean_command_delta_l1` / `command_step_large_fraction`。
 
 ---
 
@@ -359,6 +377,22 @@ completion ≥ 0.90  ∧  collision ≤ 0.10  ∧  fallen ≤ 0.05
 | 密集混杂 v1（21 m） | 同上（a9） | 3 点 × 256 回合 | 0.20–0.45@0.3 → 88.67 %（摔倒 10.94 %）；0.85–1.00@0.5 → 55.08 %；@1.0 → 36.72 %（碰撞 26.17 %）→ **超出旧分布** |
 | 密集混杂 v1（21 m） | `2026-09-19_16-00-00_go1-stage1-terrain-a10b-hard/model_599.pt` | 2 点 × 256 回合 | 0.85–1.00@0.5 → **92.19 % PASS**；@1.0 → 87.89 %（碰撞 8.59 %、摔倒 3.52 %） |
 | 密集混杂 v2（30 m，含盲台阶） | `2026-09-19_18-00-00_go1-stage1-terrain-a10c-long`（训练中） | 视频 1 回合 | 0.25–0.50 / 指令 0.35–0.55 m/s → **100 %**（碰撞 0、摔倒 0） |
+| **密集混杂 v3（30 m，3–4 段楼梯 + 长楼梯）** | `2026-09-20_14-00-00_go1-stage1-terrain-v3-broad/model_899.pt` | 2 带 × 256 回合 | 0.20–0.45 → **99.61 %**；0.45–0.75 → **98.83 %** |
+| **密集混杂 v3** | `2026-09-20_16-30-00_go1-stage1-terrain-v3-hard/model_799.pt`（**已冻结**） | 0.85–1.00 × 256 回合 | 85.16 %（碰撞 11.33 %、摔倒 3.52 %）→ 难带超包线 |
+
+**v3 的 16 格门禁矩阵**（难度 0.25/0.50/0.75/0.92 × 速度 0.3/0.5/0.8/1.0，256 环境）：
+
+```text
+0.25 / 0.50 / 0.75 行：12/12 格 PASS（completion 97.27–100 %）
+0.92 行：              4/4 格 FAIL（78.91 / 89.06 / 87.89 / 87.50 %）
+```
+
+→ **认证带 = 难度 ≤0.75（全速度）**；0.4–0.6 m/s 内可放宽到 ≤0.85；0.88 在 ≥0.5 m/s 通过（92.19 %）。
+
+**难带失败的根因（`GO1_DEBUG_FALL=1`，22 次事件）**：全部命中倾斜判据、`gravity_z ∈ (−0.499, −0.406)`
+（阈值 −0.5）、机身高度正常、实际速度 0.15–**1.59 m/s**（指令上限 0.60）→ **高速瞬时俯仰尖峰**，
+不是地形卡住或摔垮。三个奖励塑形实验（加重碰撞惩罚 / 加强姿态 / 削平长楼梯）**全部为负结果并已回退**：
+难带约 15 % 的失败总量是地形与平台的能力上限，调权重只是把失败在"碰撞 ↔ 摔倒"之间搬家。
 
 第一层认证冻结记录：`envelope = {min_completion 0.90, max_collision 0.10, max_fallen 0.05}`、
 `validation_protocol = stage1-gate-v1`、`metadata.capability_validated = true`。
@@ -371,6 +405,18 @@ completion ≥ 0.90  ∧  collision ≤ 0.10  ∧  fallen ≤ 0.05
 | 短赛道（全带） | 同上 | 0.20–1.00 × 256 回合 | **99.61 %**（碰撞 0.39 %、摔倒 0、超时 0） |
 | 密集混杂 v1（21 m） | 同上 | 2 带 × 256 回合 | 0.20–0.60 → 90.23 %；0.60–1.00 → 62.89 %（碰撞 12.5 %、摔倒 25.4 %）→ 需按新赛道重训 |
 | 密集混杂 v1（21 m） | 同上 + 冻结第一层 a9 | 视频 1 回合 ×2 | 0.20–0.50 → **100 %**；0.45–0.80 → **100 %** |
+| **密集混杂 v3（30 m）** | `2026-09-21_13-45-00_go1-stage2-speed-v3-broad/model_1199.pt` | 0.50 / 0.75 / 0.90 × 256 回合 | 99.61 % / 99.61 % / 91.41 %（抖动 0.063 / 0.066 / 0.069） |
+| **密集混杂 v3（30 m）** | `2026-09-21_17-00-00_go1-stage2-speed-v3-hard/model_799.pt`（**当前采用**） | 0.50 / 0.75 / 0.90 × 256 回合 | **100 % / 98.83 % / 92.19 %**（抖动 **0.022 / 0.026 / 0.029**） |
+
+**"速度更稳定"的对照证据**（同冻结第一层、同难度 0.90、256 环境）：
+
+| 第二层 | completion | collision | fallen | `mean_command_delta_l1` |
+|---|---|---|---|---|
+| 旧 `speed-v1/model_400` | 90.63 % | 1.95 % | 7.42 % | 0.1878 |
+| **新 `v3-hard/model_799`** | **92.19 %** | 1.56 % | 6.25 % | **0.0293（↓6.4×）** |
+
+→ 难带完成率 **+1.6 pt** 且指令抖动 **降至 1/6.4**；认证带（≤0.75）三项全过。
+唯一退步：大跳变比例略高（0.67 % vs 0.53 %）——"平时更平滑、偶发大修正"。
 
 ---
 
@@ -381,6 +427,8 @@ completion ≥ 0.90  ∧  collision ≤ 0.10  ∧  fallen ≤ 0.05
 | `media/layer1_speed_tracking_long_course.mp4` | **第一层单方向速度跟踪**（只跑运控，蓝色箭头=固定方向指令，绿色=实际速度） | 密集混杂 v2（30 m），难度 0.25–0.50，指令 0.35–0.55 m/s，75 s | completion **100 %**、collision 0、fallen 0 |
 | `media/two_layer_dense_easy.mp4` | **两层联动**：第二层按地形起伏决策速度，第一层执行 | 密集混杂 v1（21 m），难度 0.20–0.50 | completion **100 %**、collision 0、fallen 0 |
 | `media/two_layer_dense_medium.mp4` | 同上，更难带 | 密集混杂 v1（21 m），难度 0.45–0.80 | completion **100 %**、collision 0、fallen 0 |
+| `media/two_layer_v3_course_d050.mp4` | **两层联动**（v3 赛道：3–4 段楼梯 + 长楼梯） | 密集混杂 v3（30 m），难度 0.50 | completion **100 %**、collision 0、fallen 0 |
+| `media/two_layer_v3_course_d090.mp4` | 同上，难带 | 密集混杂 v3（30 m），难度 0.90 | completion **100 %**、collision 0、fallen 0 |
 
 预览帧位于 `media/frames/`。视频由 Isaac Sim **内部 RGB 录制**（`--record-video`）生成，
 相机固定跟随第 0 号环境，画面中不含桌面/编辑器 UI。
@@ -399,7 +447,7 @@ completion ≥ 0.90  ∧  collision ≤ 0.10  ∧  fallen ≤ 0.05
 ```bash
 export ISAACLAB_PATH=/config/Desktop/IsaacLab
 cd /config/Desktop/sim            # 本仓库根目录
-./sim.sh test                     # 全部单元测试（98 项）
+./sim.sh test                     # 全部单元测试（103 项）
 ```
 
 ### 8.2 生成赛道并自检
@@ -427,13 +475,18 @@ GO1_RUN_ID=<run-id> ./scripts/torchrun_sim.sh train --stage stage1 --terrain cou
   --initialize-from <previous.pt> --critic-warmup-iterations 40 --robustness on \
   --run-name <run-id>
 
-# 第二层：冻结第一层（必须用 validated checkpoint），只训速度层
+# 第二层：冻结第一层，只训速度层（stage2 无速度带，不要传 --speed-*）
 GO1_RUN_ID=<nav-run-id> ./scripts/torchrun_sim.sh train --stage stage2 --terrain course --headless \
-  --num-envs 256 --iterations 1500 --episode-seconds 120 \
+  --num-envs 256 --iterations 1200 --episode-seconds 150 \
   --course-difficulty-min 0.20 --course-difficulty-max 1.00 \
-  --locomotion-checkpoint <layer1.validated.pt> \
+  --locomotion-checkpoint <layer1.pt> --allow-uncertified-locomotion \
   --run-name <nav-run-id>
 ```
+
+- 第二层再按 `--course-difficulty-min 0.85 --course-difficulty-max 1.00` 收束 800 轮即为当前采用模型。
+- `--locomotion-checkpoint` 默认要求**带门禁记录的 validated checkpoint**；使用未认证但已实测的第一层时
+  必须显式加 `--allow-uncertified-locomotion`。
+- 双卡是**多进程数据并行**：只增大每轮样本量，不减少 wall-clock（实测单卡/双卡每轮耗时接近）。
 
 ### 8.4 评测 / 门禁 / 录制视频
 
@@ -446,6 +499,9 @@ GO1_RUN_ID=<nav-run-id> ./scripts/torchrun_sim.sh train --stage stage2 --terrain
 
 # 16 格冻结门（一个格子一次调用，可断点续跑）
 ./scripts/eval_gate_stage1.sh <ckpt> 256 0.3,0.5,0.8,1.0 0.25,0.5,0.75,1.0 cuda:1 150 256 1.0
+
+# 第二层验收（只按难度遍历；stage2 无速度带）
+./scripts/eval_gate_stage2.sh <locomotion-ckpt> <navigation-ckpt> 256 0.5,0.75,0.9 cuda:0 150 256
 
 # 内部视频录制（渲染仅支持 cuda:0）
 ./sim.sh evaluate --stage stage2 --terrain course --headless --device cuda:0 \
@@ -467,7 +523,7 @@ GO1_RUN_ID=<nav-run-id> ./scripts/torchrun_sim.sh train --stage stage2 --terrain
 ├── sim.sh                     # 统一入口：test / check / train / evaluate / export
 ├── configs/
 │   ├── rewards_stage1_v20_paper.toml   # 第一层奖励契约（42 项，唯一真源）
-│   ├── rewards_nav_v2.toml             # 第二层奖励契约（15 项）
+│   ├── rewards_nav_v2.toml             # 第二层奖励契约（16 项）
 │   ├── rewards_loco_v2.toml            # 可选 loco_v2 契约（hier_v2 变体）
 │   ├── rewards_stage1.toml             # 历史默认契约（兼容回退）
 │   └── ppo_v20_paper.json              # PPO 超参
@@ -479,7 +535,8 @@ GO1_RUN_ID=<nav-run-id> ./scripts/torchrun_sim.sh train --stage stage2 --terrain
 │   └── training.md             # 训练/评测命令手册与踩坑记录
 ├── media/                      # 演示视频与预览帧
 ├── scripts/
-│   ├── eval_gate_stage1.sh     # 16 格冻结门
+│   ├── eval_gate_stage1.sh     # 16 格冻结门（难度 × 速度）
+│   ├── eval_gate_stage2.sh     # 第二层验收（只按难度）
 │   ├── gate_record.py          # 门禁记录生成
 │   ├── torchrun_sim.sh         # 双卡训练入口
 │   ├── resume_v20_course.sh    # 课程化续训流程（分阶段）
@@ -489,13 +546,14 @@ GO1_RUN_ID=<nav-run-id> ./scripts/torchrun_sim.sh train --stage stage2 --terrain
 │   ├── contracts.py            # 版本化接口规范（schema 5）
 │   ├── models.py               # actor/critic 网络（ActorCore / CriticCore）
 │   ├── envs/{config,geometry,environment,runtime}.py   # 场景、赛道、环境、运行时
-│   ├── hier_v2/                # fwwb 风格可选契约：奖励、模型变体、鲁棒性课程
+│   ├── hier_v2/                # fwwb 风格可选契约：奖励、模型变体、鲁棒性课程、起伏图
+│   │   └── relief.py           # 纯函数：起伏图计算（isfinite 屏蔽 + 分母下限，可单测）
 │   ├── training/{on_policy,distillation}.py            # PPO runner 与视觉蒸馏
 │   ├── checkpoints.py          # 严格 checkpoint + 认证（certify）
 │   ├── gate.py                 # 冻结门协议/记录
 │   ├── export.py               # TorchScript 导出（完整部署图）
 │   └── cli.py                  # 命令行入口
-└── tests/                      # 98 项单元测试（契约/几何/奖励/门禁/模型/视频）
+└── tests/                      # 103 项单元测试（契约/几何/奖励/门禁/模型/视频/起伏图）
 ```
 
 ---
@@ -507,15 +565,18 @@ GO1_RUN_ID=<nav-run-id> ./scripts/torchrun_sim.sh train --stage stage2 --terrain
 2. **赛道网格面数预算**：单 tile ≤ ~21 k 面。加长或加密赛道时若超过约 10 M 面（256 环境），
    PhysX cooking 会失败且只在启动日志留下警告，表现为"全环境摔倒"。
 3. **第二层尚无独立门禁协议**：`certify_checkpoint` 的 stage2 路径仍沿用旧的 `terrain=="mixed"`
-   判定，需要为速度层定义专门的验收协议（当前只做逐格评测）。
+   判定，需要为速度层定义专门的验收协议（当前只做逐格评测，用 `scripts/eval_gate_stage2.sh`）。
 4. **`hier_v2` 编码器变体未被发布 checkpoint 使用**：只有显式传 `--reward-contract loco_v2|nav_v2`
    才会启用 `EncoderActorCore`；`_ppo_config` 读取的是**原始 CLI 参数**，而环境侧按 stage 推导契约，
    两者在未显式传参时不总是同步 —— 需要统一（见 `docs/training.md` 的已知不一致）。
-5. **赛道仍在迭代**：当前地形（40 m tile、30 m 特征区、含盲台阶）正在重训两层；
-   第 6 节标注了每个数字对应的赛道版本。
+5. **地形 v3 上两层的认证带都是 难度 ≤0.75**：0.90 及以上时失败总量约 15 %，其中第一层自身就占满了这个
+   预算（碰撞 ↔ 摔倒相互搬家，三个塑形实验均为负结果）。要突破必须改地形或提升第一层能力。
 6. **不做避障**：第二层的壁面/绕障奖励权重为 0，场景不生成障碍盒；如需避障需另立契约。
 7. **无 CI / 无 LICENSE 决策**：本仓库当前只要求在 Isaac 环境内跑 `./sim.sh test`
-   （98 项）；纯 CPU 的 CI 与许可证选择待定。
+   （103 项）；纯 CPU 的 CI 与许可证选择待定。
+8. **射线未命中必须显式屏蔽**：`raycast_mesh` 未命中返回 `inf`，任何 `inf − inf` / `inf × 0`
+   都会把几何变成 NaN 并污染 PPO 梯度（曾导致第二层训练在第 50 轮崩溃）。
+   规则见 `hier_v2/relief.py`：先 `isfinite` 屏蔽再做参考值/梯度，分母一律 `clamp_min`。
 
 ---
 
