@@ -15,6 +15,6 @@ v1_failure_videos/
 **/.pytest_cache/
 v7_work/
 v9_work/
-reports/
-sim/reports/
+/reports/
+/sim/reports/
 sim/backups/
