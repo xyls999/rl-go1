@@ -1,5 +1,6 @@
 # heavy artifacts are kept out of git
 *.mp4
+!docs/media/*.mp4
 *.gif
 *.pt
 *.log
