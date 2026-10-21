@@ -1,0 +1,10 @@
+
+## 2026-10-20 09:00 UTC v36 三轮真实数据修正 + soft9间距假说 + 宿主机Isaac挂死（需重启宿主机）
+
+- **数据修正**：v36a/b/c 的 gate 行里 failure 不是摔倒率。真实 fallen_rate：v36a 0.7865 → v36b 0.7645 → v36c 0.7282；timeout 0.158→0.305→0.365；completion 全 0。即 P10 两阶段（软终止前训+硬微调800轮）把 collision 从 0.168 降到 0.042，但摔倒率仍~73%，远未达教师门槛。
+- v36c 轨迹（130/130 全摔）死亡终点 x 分位 [1.9, 10.2, 21.0]：入口区(≈1.9m)、中段(≈10m slope)、长沟区(≈21m)。此前"two killers"判断需修正为三处。
+- **soft9 假说（待验证）**：combined 入口三沟 pad=0.65(沟心间距0.78m)，而 v26 100% 通过的 gaps_short 族 pad=1.10。新增 combined_soft9（入口 pad=1.10，几何其余同 combined）用于判定"间距"是否关键因素。geometry 6ea806c93442da1454010b6fdd1b95ad83519a5a756b3bd8488fd3b5c2e6f574、runtime 26ddb3969431b4c1df77cd2e81d557ef3124e28ddd32593469e7e58395454989 已部署；combined 默认几何字节不变（override 仅在 soft9 时生效）。
+- v37_eval_plan_combined_soft9.json(128槽) 与 v37_plan_soft9_32.json(32槽) 已生成；v37_probe_soft9.sh / v37_gpu1_test.sh / v37_watch.sh 已部署。
+- **阻塞（环境）**：宿主机 Isaac 自 07:45 起在 Kit 启动阶段挂死（GPU 0%、日志停在 startup warnings），多次清理 /dev/shm carb 段、换 GPU1 单卡亦复现；GPU0 存在两个死进程残余 CUDA 上下文（nvidia-smi [Not Found] 8467/50493）。容器内无 systemd，`sudo reboot` 不可用。**需在宿主机执行重启**（用户 2026-10-19 16:52 的手动重启曾一次性解决同类问题）。
+- 已挂 6 小时自愈监视器 scripts/v37_watch.sh（每~9分钟清进程/shm→跑 soft9 判定，最多40轮），结果写 reports/v37_probe_watch.log。宿主机恢复后自动出数：若 soft9 fallen 明显下降→按间距做课程（soft9→真实0.65）并用 v36c 初始化继续；若仍高→转逐帧 replay 诊断而非继续盲训。
+- v36d（提速指令带 0.6-0.8）已备好未跑（runner 3a30cada 支持 gate_speed_min/max 覆盖，config 1c7343bf，launcher 34bb1863），待 soft9 结论后决定是否仍需要。

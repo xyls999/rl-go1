@@ -1,0 +1,20 @@
+# heavy artifacts are kept out of git
+*.mp4
+*.gif
+*.pt
+*.log
+.agent-session-bus/
+.pi/
+.tmp-video-inspection/
+d2_families/
+s22_failure_videos/
+v1_failure_videos/
+**/*_frames*/
+**/checkpoints/
+**/__pycache__/
+**/.pytest_cache/
+v7_work/
+v9_work/
+reports/
+sim/reports/
+sim/backups/

@@ -1,0 +1,5 @@
+{
+  "general": "/config/Desktop/sim/checkpoints/stage1/2026-10-18_go1-v26-triple-refine-s01-p1-d1/model_899.pt",
+  "tire": "/config/Desktop/sim/checkpoints/stage1/2026-10-16_go1-v15-tire-teacher-s01-p1-d1/model_899.pt",
+  "long": "/config/Desktop/sim/checkpoints/stage1/2026-10-17_15-32-19_2026-10-17_go1-v19p4-long-teacher-s01-p1-d1/model_899.pt"
+}
