@@ -243,6 +243,7 @@ def main() -> None:
         "course", "combined_soft", "combined_soft2", "combined_soft3", "combined_soft4",
         "combined_soft6", "combined_soft7", "combined_soft8",
         "combined_soft12", "combined_soft13", "combined_soft14", "combined_soft15",
+        "combined_soft17", "combined_soft18", "combined_soft19", "combined_soft20", "combined_soft21",
     ))
     gate_families = (str(config["gate_family"]),) if config.get("gate_family") else families
     gate_spec = dict(config["gate"])

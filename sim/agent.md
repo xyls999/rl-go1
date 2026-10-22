@@ -759,3 +759,9 @@ yaw RMSE 0.0444，报告为`reports/evaluate_stage1_2026-09-10_12-16-04.json`；
 
 - v59: real combined geometry training slot with fall-respawn (restore last safe pose, episode continues), 800 iters from v26: gate completion 0/701, fallen 78.2%, timeout 16.6%, achv 0.269. No improvement vs v38 (72.7%) / v46 (73.6%).
 - Corrected the false positive: combined_soft17 (stairs removed) had not been aliased to course_gaps and built an empty tile; the true test is 0% again.
+
+## 2026-10-22 15:00 UTC virtual penetration (v60/v61) also no improvement
+
+- v60: 7.5cm grooves + entry_multiplier=40 -> gate completion 0/707, fallen 89.7%.
+- v61: 3.5-4.5cm grooves, entry_multiplier=0 (calibrated, ~-2.4/step) -> gate completion 0/742, fallen 84.1%, timeout 15.8%.
+- Conclusion unchanged: combined is unreachable with a single vision policy under the current reward/physics; the remaining work would be a full re-architecture (privileged teachers with latent commands + real collision filtering for penetration).
