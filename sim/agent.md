@@ -754,3 +754,8 @@ yaw RMSE 0.0444，报告为`reports/evaluate_stage1_2026-09-10_12-16-04.json`；
 - 冒烟通过（16×2，exit=0）；v55 = 真实 combined 几何 + 软终止 + 多分辨率特权教师，900 轮，门禁真实 combined：**completion 0/570、fallen 94.6%、achv 0.166**，无改善。
 - 结论：窄沟在高分辨率下仍学不会，"分辨率不足"假设被证伪。至此 9 种训练方案 + 6 组几何消融全部失败，唯一未实现的仍是 P10 的穿透式软动力学与分层/衔接策略（ANYmal Parkour / Setup Policies 路线）。
 - 已上传 GitHub：main 分支含十族报告与 11 个视频（commit 4cd8813），另有 ten-family-snapshot 分支含完整代码快照。
+
+## 2026-10-22 10:00 UTC v59 respawn soft dynamics also no improvement
+
+- v59: real combined geometry training slot with fall-respawn (restore last safe pose, episode continues), 800 iters from v26: gate completion 0/701, fallen 78.2%, timeout 16.6%, achv 0.269. No improvement vs v38 (72.7%) / v46 (73.6%).
+- Corrected the false positive: combined_soft17 (stairs removed) had not been aliased to course_gaps and built an empty tile; the true test is 0% again.
