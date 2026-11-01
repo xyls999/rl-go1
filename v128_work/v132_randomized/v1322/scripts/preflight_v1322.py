@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -199,6 +200,32 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
                 'remote live SHA/GPU/lock attestation pending')
 
 
+def validate_test_receipt(root: Path, manifest: dict) -> None:
+    receipt = root / 'reports/v1322_test.receipt'
+    require(receipt.is_file(), 'full project test receipt absent')
+    previous = json.loads(receipt.read_text(encoding='utf-8'))
+    require(previous.get('status') == 'passed' and previous.get('restored') is True and
+            previous.get('manifest_sha256') == digest(root / 'configs/manifest.json') and
+            previous.get('log_sha256') == digest(root / 'reports/v1322_tests.log') and
+            previous.get('focus_sha256') == digest(root / 'reports/v1322_focus.log') and
+            previous.get('reward_sha256') == manifest['reward_config']['sha256'],
+            'full project test receipt/source hash mismatch')
+
+
+def validate_read_only_preflight(workspace: Path, root: Path, manifest: dict,
+                                 config: dict, baseline: dict, *, mode: str,
+                                 gpu_mib: list[int]) -> None:
+    """Permit a test/smoke source audit without miscertifying an unchosen final seed."""
+    require(mode in ('test', 'smoke'), 'only test/smoke preflight may omit the final seed')
+    validate_components(workspace, root, manifest, config, baseline, production=True, mode=mode)
+    require(len(gpu_mib) == 4 and all(0 <= value <= 256 for value in gpu_mib),
+            'GPU busy or count != 4')
+    from production_v1322 import check_targets, targets
+    check_targets(targets(root, workspace, manifest, mode), workspace)
+    if mode == 'smoke':
+        validate_test_receipt(root, manifest)
+
+
 def gpu_usage_mib() -> list[int]:
     raw = subprocess.run(['nvidia-smi', '--query-gpu=index,memory.used',
                           '--format=csv,noheader,nounits'], capture_output=True,
@@ -216,15 +243,32 @@ def main() -> int:
         config = json.loads((root / 'configs/teacher_entrance.json').read_text())
         baseline = json.loads((root / 'provenance/v1321_teacher_entrance.json').read_text())
         require(workspace.is_dir(), 'remote workspace not mounted; remote check pending')
-        validate_components(workspace, root, manifest, config, baseline, production=True)
+        mode_arg = sys.argv[1] if len(sys.argv) > 1 else 'preflight'
+        require(mode_arg in ('preflight', 'preflight-test', 'preflight-smoke'),
+                'unknown read-only preflight mode')
+        import fcntl
+        lock = workspace / 'reports/v7_sim.lock'
+        require(lock.is_file() and not lock.is_symlink() and os.fstat(9).st_ino == lock.stat().st_ino,
+                'exclusive simulator lock fd missing')
+        fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
         usage = gpu_usage_mib()
-        require(all(0 <= value <= 256 for value in usage), 'GPU memory exceeds 256 MiB')
+        from production_v1322 import isaac_process_in_listing
+        listing = subprocess.run(['ps', '-eo', 'comm=,args='], capture_output=True,
+                                 text=True, check=True).stdout
+        require(not isaac_process_in_listing(listing), 'Isaac process active')
+        if mode_arg == 'preflight':
+            validate_components(workspace, root, manifest, config, baseline,
+                                production=True, mode='final')
+            # A final holdout seed still needs separate provenance and approval.
+            raise ValueError('final gate and training are not implemented')
+        mode = mode_arg.removeprefix('preflight-')
+        validate_read_only_preflight(workspace, root, manifest, config, baseline,
+                                     mode=mode, gpu_mib=usage)
     except (ValueError, OSError, subprocess.CalledProcessError, KeyError) as exc:
         print(f'PREFLIGHT_BLOCKED: {exc}', file=sys.stderr)
         return 1
-    # This preparation version is never allowed to approve a live run.
-    print('PREFLIGHT_BLOCKED: Task 3 remote integration and authorization pending', file=sys.stderr)
-    return 1
+    print(f'PREFLIGHT_PASS mode={mode} read_only=true final_gate_authorized=false', flush=True)
+    return 0
 
 
 if __name__ == '__main__':

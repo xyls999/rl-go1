@@ -150,16 +150,29 @@ def smoke_command(workspace: Path, family: str, run_id: str, seed: int) -> list[
             '--speed-min', '0.35', '--speed-max', '0.8']
 
 
+def isaac_process_in_listing(listing: str) -> bool:
+    """Match versioned Python, torchrun, wrappers and Isaac Kit, not unrelated Python."""
+    launch = re.compile(r'(?:^|[\s/])(?:scripts/sim\.py|scripts/run_teacher_v\d+\.py|'
+                        r'scripts/torchrun_sim\.sh|sim\.sh)(?:\s|$)')
+    for line in listing.splitlines():
+        parts = line.strip().split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        comm, arguments = parts
+        if (re.fullmatch(r'python(?:\d+(?:\.\d+)?)?|torchrun|bash|sh|zsh', comm)
+                and launch.search(arguments)):
+            return True
+        if comm in {'kit', 'isaac-sim', 'isaacsim'} and re.search(r'isaac(?:sim|-sim|lab)', arguments):
+            return True
+    return False
+
+
 def ensure_idle() -> None:
     usage = gpu_usage_mib()
     require(len(usage) == 4 and all(0 <= item <= 256 for item in usage), 'GPU busy or count != 4')
     listing = subprocess.run(['ps', '-eo', 'comm=,args='], capture_output=True,
                              text=True, check=True).stdout
-    for line in listing.splitlines():
-        parts = line.split()
-        if parts and parts[0] in {'python', 'python3', 'torchrun'} and ('scripts/sim.py' in line or
-                    'scripts/run_teacher_v132' in line):
-            raise ValueError('Isaac process active')
+    require(not isaac_process_in_listing(listing), 'Isaac process active')
 
 
 def run_logged(command: list[str], log: Path, env: dict[str, str], workspace: Path) -> None:

@@ -330,6 +330,112 @@ class PreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'candidate source hash drift'):
                 self.guard.validate_components(workspace, root, manifest, cfg, old, production=False)
 
+    def test_mock_parent_symlinks_cannot_escape_sandbox(self):
+        script = ROOT / 'scripts/verify_and_train.sh'
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            sandbox, outside = parent / 'sandbox', parent / 'outside'
+            sandbox.mkdir()
+            outside.mkdir()
+            (sandbox / 'reports').mkdir()
+            source = outside / 'go1_hier_sim/go1_hier_sim/envs'
+            source.mkdir(parents=True)
+            protected = source.parent / 'cli.py'
+            protected.write_bytes(b'protected live source')
+            try:
+                (sandbox / 'source').symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest('directory symlinks unavailable on this host')
+            env = {'PATH': '/usr/bin:/bin', 'V1322_MOCK': '1',
+                   'V1322_MOCK_WORKSPACE': str(sandbox)}
+            result = subprocess.run(['bash', str(script), 'mock-restore'], env=env,
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('MOCK_DENIED', result.stderr)
+            self.assertEqual(protected.read_bytes(), b'protected live source')
+            self.assertFalse(list((sandbox / 'reports').glob('v1322-backup.*')))
+            self.assertFalse((sandbox / 'reports/.v1322_mock.lock').exists())
+
+    def test_mock_restore_failure_preserves_backup_for_manual_recovery(self):
+        script = ROOT / 'scripts/verify_and_train.sh'
+        with tempfile.TemporaryDirectory() as temp:
+            sandbox = Path(temp)
+            sources = sandbox / 'source/go1_hier_sim/go1_hier_sim'
+            (sources / 'envs').mkdir(parents=True)
+            (sandbox / 'reports').mkdir()
+            (sources / 'cli.py').write_bytes(b'old live cli')
+            env = {'PATH': '/usr/bin:/bin', 'V1322_MOCK': '1',
+                   'V1322_MOCK_WORKSPACE': str(sandbox), 'V1322_MOCK_FAIL_RESTORE': '1'}
+            result = subprocess.run(['bash', str(script), 'mock-restore'], env=env,
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('RESTORE_FAILED', result.stderr)
+            self.assertEqual(len(list((sandbox / 'reports').glob('v1322-backup.*'))), 1)
+
+    def test_idle_check_catches_versioned_python_torchrun_and_isaac(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        try:
+            import production_v1322 as production
+        finally:
+            sys.path.pop(0)
+        busy = ('python3.11 /root/env_isaaclab/bin/python3.11 /config/Desktop/sim/scripts/sim.py check',
+                'python3.12 python3.12 /config/Desktop/sim/scripts/sim.py train',
+                'torchrun /root/env_isaaclab/bin/torchrun --nproc_per_node=4 scripts/sim.py train',
+                'bash bash /config/Desktop/sim/scripts/torchrun_sim.sh train',
+                'kit /isaac-sim/kit/kit --enable isaacsim.core.api')
+        for line in busy:
+            with self.subTest(line=line), patch.object(production, 'gpu_usage_mib', return_value=[0]*4), \
+                    patch.object(production.subprocess, 'run') as run:
+                run.return_value.stdout = line + '\n'
+                with self.assertRaisesRegex(ValueError, 'Isaac process'):
+                    production.ensure_idle()
+        with patch.object(production, 'gpu_usage_mib', return_value=[0]*4), \
+                patch.object(production.subprocess, 'run') as run:
+            run.return_value.stdout = 'python3.11 python3.11 unrelated_analysis.py\n'
+            production.ensure_idle()
+
+    def test_test_smoke_read_only_preflight_does_not_require_final_seed(self):
+        cfg = json.loads((ROOT / 'configs/teacher_entrance.json').read_text())
+        old = json.loads((ROOT / 'provenance/v1321_teacher_entrance.json').read_text())
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        self.assertIsNone(cfg['gate_holdout_seed'])
+        import shutil
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            for row in manifest['sources']:
+                if row['name'] in ('strict_gate_v1322.py', 'entrance_support_v1322.py',
+                                   'gap_score_v1321.py', 'landing_stability_v131.py'):
+                    continue
+                live = workspace / row['live']
+                live.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / row['candidate'], live)
+                manifest['baseline'][row['name']] = self.guard.digest(live)
+            for row in manifest['test_overlays']:
+                candidate = workspace / row['candidate']
+                candidate.parent.mkdir(parents=True, exist_ok=True)
+                candidate.write_bytes(('synthetic pinned ' + row['candidate']).encode())
+                row['candidate_sha256'] = self.guard.digest(candidate)
+                live = workspace / row['live']
+                live.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(candidate, live)
+                row['baseline_sha256'] = self.guard.digest(live)
+            (workspace / 'reports').mkdir(exist_ok=True)
+            self.guard.validate_read_only_preflight(workspace, ROOT, manifest, cfg, old,
+                                                    mode='test', gpu_mib=[0]*4)
+            with self.assertRaisesRegex(ValueError, 'final holdout'):
+                self.guard.validate_components(workspace, ROOT, manifest, cfg, old,
+                                               production=True, mode='final')
+            with self.assertRaisesRegex(ValueError, 'test receipt'):
+                self.guard.validate_read_only_preflight(workspace, ROOT, manifest, cfg, old,
+                                                        mode='smoke', gpu_mib=[0]*4)
+            with self.assertRaisesRegex(ValueError, 'GPU'):
+                self.guard.validate_read_only_preflight(workspace, ROOT, manifest, cfg, old,
+                                                        mode='test', gpu_mib=[0, 0, 257, 0])
+        shell = (ROOT / 'scripts/verify_and_train.sh').read_text()
+        self.assertIn('preflight-test', shell)
+        self.assertIn('preflight-smoke', shell)
+
     def test_production_preflight_cannot_succeed_without_attestations(self):
         script = ROOT / 'scripts/verify_and_train.sh'
         result = subprocess.run(['bash', str(script), 'preflight'],
