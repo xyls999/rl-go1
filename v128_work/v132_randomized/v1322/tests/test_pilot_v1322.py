@@ -1,4 +1,5 @@
 """A paired pilot must preserve every input but the supported-short TOML weight."""
+import ast
 import importlib
 import io
 import json
@@ -77,7 +78,7 @@ class PilotTests(unittest.TestCase):
                                                       workspace / 'trained.pt', workspace / 'trace.jsonl')
                 self.assertEqual(evaluation[1], 'evaluate')
                 self.assertEqual(evaluation[evaluation.index('--num-envs') + 1], '64')
-                self.assertEqual(evaluation[evaluation.index('--episodes') + 1], '64')
+                self.assertEqual(evaluation[evaluation.index('--episodes') + 1], '256')
                 self.assertEqual(evaluation[evaluation.index('--seed') + 1], '2028')
                 for option in ('--course-difficulty-min', '--course-difficulty-max',
                                '--speed-min', '--speed-max', '--episode-seconds'):
@@ -105,6 +106,8 @@ class PilotTests(unittest.TestCase):
         self.assertIsNone(self.config['gate_holdout_seed'])
         self.assertEqual(self.spec['critic_warmup_iterations'], 5)
         self.assertEqual(self.spec['iterations'], 30)
+        self.assertEqual(self.spec['evaluation_episode_quota'], 256)
+        self.assertEqual(self.spec['pilot_id'], 'go1-v1322-supportedshort-pilot-a02')
         self.assertEqual(self.spec['run_ids'], {
             arm: f"{self.spec['pilot_id']}-{arm}" for arm in ('control', 'treatment')})
 
@@ -116,7 +119,7 @@ class PilotTests(unittest.TestCase):
                  'required_gap_count': 2, 'credited_gap_count': 0, 'course_x': 3.0,
                  'reward_events': {'supported_short': 3, 'safe_segment': 0}}
                 for n in range(64)]
-        report = {'episodes': 64, 'environments': {str(n): {'episodes': 1} for n in range(64)}}
+        report = {'episodes': 256, 'environments': {str(n): {'episodes': 1} for n in range(64)}}
         result = self.pilot.summarize(report, rows, 'treatment', 64)
         self.assertEqual(result['first_episode_completion_rate'], 0)
         self.assertEqual(result['supported_short_events'], 192)
@@ -142,7 +145,7 @@ class PilotTests(unittest.TestCase):
                     'credited_gap_count': 2, 'course_x': 32.0,
                     'reward_events': {'supported_short': 99, 'safe_segment': 2}}
         trace = first[:63] + [repeated, first[63]]
-        report = {'episodes': 64, 'environments': {
+        report = {'episodes': 256, 'environments': {
             str(n): {'episodes': 2 if n == 0 else 1} for n in range(64)}}
         result = self.pilot.summarize(report, trace, 'treatment', 64)
         self.assertEqual(result['reported_completed_episodes'], 65)
@@ -154,17 +157,58 @@ class PilotTests(unittest.TestCase):
 
         # Every repeated trace must still have a contiguous per-slot index and
         # exactly match the report's actual per-slot completed-episode count.
-        invalid = [({**report, 'episodes': 65}, trace),
+        invalid = [({**report, 'episodes': 64}, trace),
                    (report, trace[:-1]),
                    (report, trace[:63] + [{**repeated, 'episode_index': 0}, first[63]]),
                    (report, trace[:63] + [{**repeated, 'env_id': 1}, first[63]]),
-                   ({'episodes': 64, 'environments': {
+                   ({'episodes': 256, 'environments': {
                        str(n): {'episodes': 1} for n in range(64)}}, trace)]
         for bad_report, bad_trace in invalid:
             with self.subTest(report_episodes=bad_report['episodes'],
                               trace_length=len(bad_trace), repeated=bad_trace[63]):
                 with self.assertRaises(ValueError):
                     self.pilot.summarize(bad_report, bad_trace, 'treatment', 64)
+
+    def test_real_partial_47_slot_report_rejected_and_a01_preserved(self):
+        # Actual a01 failure: the 64-episode request hit the 2560-step cap,
+        # producing 76 trace records from only 47 slots, including fast repeats.
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            root = workspace / 'v128_work/v132_randomized/v1322'
+            paths = self.pilot.artifacts(workspace, root, self.spec)
+            self.assertIn('-a02', paths['control_run_id'])
+            a01 = workspace / 'checkpoints/stage1/go1-v1322-supportedshort-pilot-a01-control/model_29.pt'
+            a01.parent.mkdir(parents=True)
+            a01.write_bytes(b'failed pilot preserved')
+            self.pilot.validate_outputs(paths)
+            self.assertEqual(a01.read_bytes(), b'failed pilot preserved')
+        rows = [{'env_id': n, 'episode_index': 0, 'success': False, 'fallen': True,
+                 'collision': False, 'out_of_bounds': False, 'fell_into_gap': False,
+                 'required_gap_count': 2, 'credited_gap_count': 0, 'course_x': 3.0,
+                 'reward_events': {'supported_short': 2, 'safe_segment': 0}}
+                for n in range(47)]
+        rows += [{**rows[n % 47], 'episode_index': 1 + n // 47} for n in range(29)]
+        counts = {str(n): sum(row['env_id'] == n for row in rows) for n in range(47)}
+        with self.assertRaisesRegex(ValueError, 'episode mismatch'):
+            self.pilot.summarize({'episodes': 64, 'environments': {
+                key: {'episodes': count} for key, count in counts.items()}}, rows, 'control', 64)
+        with self.assertRaises(ValueError):
+            self.pilot.summarize({'episodes': 256, 'environments': {
+                key: {'episodes': count} for key, count in counts.items()}}, rows, 'control', 64)
+
+    def test_pilot_episode_quota_covers_configured_maximum_episode(self):
+        source = (ROOT / 'source/go1_hier_sim/go1_hier_sim/cli.py').read_text(encoding='utf-8')
+        function = next(node for node in ast.parse(source).body
+                        if isinstance(node, ast.FunctionDef) and node.name == '_evaluation_step_limit')
+        namespace = {}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), '<cli-limit>', 'exec'), namespace)
+        command = self.pilot.eval_command(Path('/sim'), self.config, self.spec, 'control',
+                                          Path('/sim/model.pt'), Path('/sim/trace.jsonl'))
+        requested = int(command[command.index('--episodes') + 1])
+        max_steps = int(float(command[command.index('--episode-seconds') + 1]) / .02)
+        self.assertEqual(requested, 256)
+        self.assertGreaterEqual(namespace['_evaluation_step_limit'](requested, 0), max_steps)
+        self.assertLess(namespace['_evaluation_step_limit'](64, 0), max_steps)
 
     def test_incomplete_training_checkpoint_is_not_evaluated(self):
         with tempfile.TemporaryDirectory() as directory:

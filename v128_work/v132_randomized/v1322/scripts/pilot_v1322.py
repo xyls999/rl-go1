@@ -21,6 +21,7 @@ MODEL_SHA = 'd007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450'
 DIAG_RECEIPT = 'v1322_go1-v1322-real-entrance-s01-p1-d1-dev-v1321-seed2028-a01.receipt'
 DIAG_SHA = 'eec7976bf2b42a73d1e7610385accd9835f292be171e40a6706da2058ac9d198'
 ARMS = ('control', 'treatment')
+EVALUATION_EPISODE_QUOTA = 256  # 256*40 steps cover the 200s/0.02s maximum episode.
 
 
 def digest_bytes(data: bytes) -> str:
@@ -73,7 +74,7 @@ def validate_tomls(control: bytes, treatment: bytes, spec: dict, manifest: dict)
 
 def artifacts(workspace: Path, root: Path, spec: dict) -> dict:
     pilot = spec['pilot_id']
-    require(pilot == 'go1-v1322-supportedshort-pilot-a01', 'unapproved pilot ID')
+    require(pilot == 'go1-v1322-supportedshort-pilot-a02', 'unapproved pilot ID')
     result = {'plan': root / 'reports' / f'{pilot}_plan.json',
               'control_toml': root / 'reports' / f'{pilot}_control.toml',
               'receipt': root / 'reports' / f'{pilot}.receipt'}
@@ -110,8 +111,10 @@ def validate_inputs(root: Path, workspace: Path, manifest: dict, config: dict,
             'pilot base source manifest changed; redo full tests/PhysX')
     require(spec['final_holdout'] is False and config['gate_holdout_seed'] is None and
             manifest['execution']['holdout_seed'] is None, 'pilot cannot be final gate')
-    require(spec['num_envs'] == 64 and spec['iterations'] == 30 and
-            spec['critic_warmup_iterations'] == 5 and spec['train_seed'] == 42 and
+    require(spec['num_envs'] == 64 and
+            spec['evaluation_episode_quota'] == EVALUATION_EPISODE_QUOTA and
+            spec['iterations'] == 30 and spec['critic_warmup_iterations'] == 5 and
+            spec['train_seed'] == 42 and
             spec['development_evaluation_seed'] == 2028, 'pilot iteration/seed contract changed')
     require(config['init_checkpoint'] == manifest['execution']['initial_checkpoint'] and
             manifest['execution']['checkpoint_sha256'] == spec['checkpoint_sha256'] == MODEL_SHA,
@@ -169,10 +172,17 @@ def train_command(workspace: Path, config: dict, spec: dict, arm: str, plan: Pat
 
 def eval_command(workspace: Path, config: dict, spec: dict, arm: str, checkpoint: Path,
                  trace: Path) -> list[str]:
-    require(arm in ARMS and spec['development_evaluation_seed'] == 2028,
-            'pilot evaluation seed changed')
+    require(arm in ARMS and spec['development_evaluation_seed'] == 2028 and
+            spec['num_envs'] == 64 and
+            spec['evaluation_episode_quota'] == EVALUATION_EPISODE_QUOTA and
+            float(config['episode_seconds']) == 200.0,
+            'pilot evaluation coverage or episode-time contract changed')
+    # Legacy evaluation uses episodes*40 as a step cap. The quota of 256
+    # allows >=10240 steps for every 200s (10000-step) first episode to end;
+    # it is NOT the number of environments scored, which remains exactly 64.
     return [str(workspace / 'sim.sh'), 'evaluate', '--stage', 'stage1', '--terrain', 'lp_acrl',
-            '--headless', '--device', 'cuda:0', '--num-envs', '64', '--episodes', '64',
+            '--headless', '--device', 'cuda:0', '--num-envs', '64', '--episodes',
+            str(spec['evaluation_episode_quota']),
             '--episode-trace', str(trace), '--episode-seconds', str(config['episode_seconds']),
             '--course-difficulty-min', '0.0', '--course-difficulty-max', str(config['difficulty_max']),
             '--speed-min', str(config['gate_speed_min']), '--speed-max', str(config['gate_speed_max']),
@@ -195,7 +205,8 @@ def summarize(report: dict, trace: list[dict], arm: str, count: int) -> dict:
     expected = {str(index) for index in range(count)}
     environments = report.get('environments', {})
     require(isinstance(environments, dict) and set(environments) == expected and
-            type(report.get('episodes')) is int and report['episodes'] == count and
+            type(report.get('episodes')) is int and
+            report['episodes'] == EVALUATION_EPISODE_QUOTA and
             all(isinstance(entry, dict) and type(entry.get('episodes')) is int and
                 entry['episodes'] >= 1 for entry in environments.values()) and
             sum(entry['episodes'] for entry in environments.values()) == len(trace),

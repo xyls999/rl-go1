@@ -9,12 +9,13 @@
   "checkpoint_sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450",
   "control_toml_sha256": "c74a02a2e8d675cd0647f06ab0957ef72b43c3828acb232b562f63aaa1d0e116",
   "treatment_toml_sha256": "cfde98e63504329ee1e3d13e0f19adf9207700a8ef1288703f824190680358ca",
-  "pilot_id": "go1-v1322-supportedshort-pilot-a01",
+  "pilot_id": "go1-v1322-supportedshort-pilot-a02",
   "run_ids": {
-    "control": "go1-v1322-supportedshort-pilot-a01-control",
-    "treatment": "go1-v1322-supportedshort-pilot-a01-treatment"
+    "control": "go1-v1322-supportedshort-pilot-a02-control",
+    "treatment": "go1-v1322-supportedshort-pilot-a02-treatment"
   },
   "num_envs": 64,
+  "evaluation_episode_quota": 256,
   "iterations": 30,
   "critic_warmup_iterations": 5,
   "train_seed": 42,
