@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import math
 import os
@@ -116,24 +117,51 @@ def require_deterministic_gate_report(path: Path | None, config: dict) -> None:
         raise SystemExit("deterministic gate report missing; stage left uncommitted")
 
 
-def require_strict_gate_report(report_path: Path | None, trace_path: Path, count: int) -> dict:
-    """Reject a deterministic gate unless every slot has one paired trace row."""
+def require_strict_gate_report(report_path: Path | None, trace_path: Path, count: int,
+                               checkpoint: Path, seed: int, run_id: str | None = None) -> dict:
+    """Fail closed when first-episode trace and report disagree on terminal outcomes."""
     if report_path is None or not report_path.is_file() or not trace_path.is_file():
         raise SystemExit("strict gate report or trace missing")
+    if run_id is not None and report_path.name != f"evaluate_stage1_gate-{run_id}.json":
+        raise SystemExit("strict gate report run provenance mismatch")
     report = json.loads(report_path.read_text(encoding="utf-8"))
     by_env = report.get("environments", {})
     expected = {str(index) for index in range(count)}
-    if (report.get("episodes") != count or set(by_env) != expected or
-            any(slot.get("episodes") != 1 for slot in by_env.values()) or
-            sum(slot["episodes"] for slot in by_env.values()) != count):
+    if (report.get("episodes") != count or not isinstance(by_env, dict) or set(by_env) != expected or
+            any(not isinstance(slot, dict) or slot.get("episodes") != 1
+                for slot in by_env.values())):
         raise SystemExit("strict gate report missing or duplicate environment episodes")
+    if report.get("stage") != "stage1" or report.get("terrain") != "lp_acrl" or report.get("seed") != seed:
+        raise SystemExit("strict gate report evaluation provenance mismatch")
+    digest = hashlib.sha256()
+    with checkpoint.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if report.get("checkpoint_sha256") != digest.hexdigest():
+        raise SystemExit("strict gate checkpoint hash mismatch")
     trace = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    terminal_flags = ("success", "fallen", "collision", "out_of_bounds", "fell_into_gap")
     if (len(trace) != count or
             {str(row.get("env_id")) for row in trace} != expected or
             any(row.get("episode_index") != 0 or
-                not {"required_gap_count", "credited_gap_count"} <= row.keys()
+                not {"required_gap_count", "credited_gap_count"} <= row.keys() or
+                any(type(row.get(flag)) is not bool for flag in terminal_flags)
                 for row in trace)):
         raise SystemExit("strict gate trace missing, duplicate or incomplete")
+    for row in trace:
+        slot = by_env[str(row["env_id"])]
+        if any(slot.get(flag) != int(row[flag])
+               for flag in ("success", "collision", "out_of_bounds", "fell_into_gap")):
+            raise SystemExit("strict gate report/trace terminal mismatch")
+    rates = {f"{flag}_rate": sum(row[flag] for row in trace) / count for flag in terminal_flags}
+    rates["completion_rate"] = sum(
+        row["success"] and not any(row[flag] for flag in terminal_flags[1:])
+        for row in trace) / count
+    for name, expected_rate in rates.items():
+        value = report.get(name)
+        if type(value) not in (float, int) or not math.isfinite(value) or not math.isclose(
+                value, expected_rate, abs_tol=1e-9):
+            raise SystemExit(f"strict gate report/trace {name} mismatch")
     return report
 
 
@@ -210,36 +238,58 @@ def run_stage(run_id: str, plan_path: Path, phase: dict, config: dict, envs: int
         raise SystemExit(f"stage {run_id} failed (exit {completed.returncode}); see {log_path}")
 
 
+def holdout_seed(config: dict) -> int:
+    """Require a deliberately selected seed; Task 3 verifies it has not been used."""
+    seed = config.get("gate_holdout_seed")
+    if type(seed) is not int or seed < 0 or seed == 2028:
+        raise ValueError("V132.2 requires a fresh explicit gate_holdout_seed (not 2028)")
+    return seed
+
+
+def gate_trace_path(workspace: Path, run_id: str) -> Path:
+    """Each gate owns a distinct trace; never reuse even its own previous output."""
+    if not run_id or Path(run_id).name != run_id:
+        raise ValueError("gate run_id must be one safe path component")
+    trace_path = workspace / "reports" / f"v1322_{run_id}_trace.jsonl"
+    if trace_path.exists():
+        raise SystemExit(f"strict gate trace already exists: {trace_path}")
+    return trace_path
+
+
 def make_gate_command(workspace: Path, run_id: str, envs: int,
-                      episode_seconds: float, checkpoint: Path, config: dict) -> list[str]:
-    """The evaluation must use exactly the speed band used to train the actor."""
+                      episode_seconds: float, checkpoint: Path, config: dict,
+                      trace_path: Path) -> list[str]:
+    """Evaluate the training speed band using the same trace path as the validator."""
     if envs != 512:
         raise ValueError("V132.2 strict gate requires 512 environments")
     return [
         str(workspace / "sim.sh"), "evaluate",
         "--stage", "stage1", "--terrain", "lp_acrl", "--headless",
         "--num-envs", str(envs), "--episodes", str(envs),
-        "--strict-first-episode", "--episode-trace",
-        "reports/v1322_go1-v1322-real-entrance-s01-p1-d1_trace.jsonl",
+        "--strict-first-episode", "--episode-trace", str(trace_path),
         "--episode-seconds", str(episode_seconds),
         "--speed-min", str(config.get("gate_speed_min", config["speed_min"])),
         "--speed-max", str(config.get("gate_speed_max", config["speed_max"])),
-        "--seed", "2028", "--checkpoint", str(checkpoint),
+        "--seed", str(holdout_seed(config)), "--checkpoint", str(checkpoint),
         "--run-name", f"gate-{run_id}",
     ]
 
 
 def run_gate_eval(run_id: str, plan_path, phase, config, envs, episode_seconds,
-                  checkpoint) -> Path | None:
+                  checkpoint, trace_path: Path) -> Path | None:
     """Deterministic (argmax-action) evaluation of the finished stage."""
-    command = make_gate_command(WORKSPACE, run_id, envs, episode_seconds, checkpoint, config)
+    command = make_gate_command(WORKSPACE, run_id, envs, episode_seconds, checkpoint,
+                                config, trace_path)
     environment = dict(os.environ)
     environment.update(SENSOR_ENV)
     environment.update(disturbance_env(phase))
     environment["GO1_TASK_PLAN"] = str(plan_path)
+    environment["GO1_RUN_ID"] = f"gate-{run_id}"
     environment.setdefault("GO1_REWARD_CONFIG_PATH",
                            str(WORKSPACE / "configs" / "rewards_stage1_gaps_v5.toml"))
     environment.setdefault("GO1_PPO_CONFIG_PATH", str(WORKSPACE / "configs" / "ppo_gaps_long.json"))
+    if (WORKSPACE / "reports" / f"evaluate_stage1_gate-{run_id}.json").exists():
+        raise SystemExit("strict gate report already exists")
     log_path = WORKSPACE / f"v35_gate_{run_id}.log"
     with log_path.open("w", encoding="utf-8") as stream:
         completed = subprocess.run(command, env=environment, stdout=subprocess.PIPE,
@@ -331,6 +381,8 @@ def main() -> None:
         phase = phases[phase_index]
         stage_count += 1
         run_id = f"{base_id}-s{stage_count:02d}-{phase['name']}-d{target_level}"
+        trace_path = gate_trace_path(WORKSPACE, run_id)
+        holdout_seed(config)
         plan_path = WORKSPACE / "reports" / f"lp_plan_{run_id}.json"
         warmup = int(config["warmup_first"]) if stage_count == 1 else int(config["warmup"])
         speed_levels = phase.get("speed_levels")
@@ -385,14 +437,10 @@ def main() -> None:
         gate_plan_path.write_text(json.dumps(gate_plan, indent=2, allow_nan=False) + "\n", encoding="utf-8")
         record(f"[{run_id}] GATE_PLAN {gate_plan_path.name} balanced_{len(gate_families)}_families")
         gate_report_path = run_gate_eval(run_id, gate_plan_path, phase, config, envs,
-                                        episode_seconds, init_checkpoint)
-        trace_path = WORKSPACE / "reports/v1322_go1-v1322-real-entrance-s01-p1-d1_trace.jsonl"
-        report = require_strict_gate_report(gate_report_path, trace_path, envs)
-        if gate_report_path is not None and gate_report_path.is_file():
-            report = json.loads(gate_report_path.read_text(encoding="utf-8"))
-            record(f"[{run_id}] GATE source=deterministic_eval {gate_report_path.name}")
-        else:
-            record(f"[{run_id}] GATE source=training_rollout (deterministic eval failed)")
+                                        episode_seconds, init_checkpoint, trace_path)
+        report = require_strict_gate_report(gate_report_path, trace_path, envs,
+                                            init_checkpoint, holdout_seed(config), run_id)
+        record(f"[{run_id}] GATE source=deterministic_eval {gate_report_path.name}")
         decision, stats = gate_decision(gate_plan, report, gate_spec)
         record(f"[{run_id}] GATE result={decision} completion={stats['completion_rate']:.4f} "
                f"episodes={stats['episodes']} survival={stats['survival_rate']:.4f} "
