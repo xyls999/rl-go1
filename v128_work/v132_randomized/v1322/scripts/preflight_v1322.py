@@ -134,11 +134,14 @@ def validate_mode_outputs(workspace: Path, mode: str, run_id: str, *, attempt: i
         require(manifest is not None, 'development manifest missing')
         validate_outputs(artifacts(workspace, manifest))
         return
-    if mode == 'pilot':
-        from pilot_v1322 import artifacts, validate_outputs
+    if mode in ('pilot', 'train'):
+        module_name = 'pilot_v1322' if mode == 'pilot' else 'train_entrance_v1322'
+        spec_name = 'pilot_execution.json' if mode == 'pilot' else 'train_entrance_execution.json'
+        import importlib
+        module = importlib.import_module(module_name)
         root = workspace / 'v128_work/v132_randomized/v1322'
-        spec = json.loads((root / 'configs/pilot_execution.json').read_text(encoding='utf-8'))
-        validate_outputs(artifacts(workspace, root, spec))
+        spec = json.loads((root / 'configs' / spec_name).read_text(encoding='utf-8'))
+        module.validate_outputs(module.artifacts(workspace, root, spec))
         return
     if mode not in ('test', 'smoke'):
         raise ValueError('production mode not implemented: ' + mode)
@@ -203,10 +206,10 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
             'train/gate reward or observation mask changed')
     require(not any(key in env for key in ('GO1_V29_TEACHER_DISTILL', 'GO1_WATCHDOG', 'GO1_AUTO_P2')),
             'forbidden automation enabled')
-    if production and mode in ('test', 'smoke', 'diagnose', 'pilot'):
+    if production and mode in ('test', 'smoke', 'diagnose', 'pilot', 'train'):
         validate_mode_outputs(workspace, mode, run_id, attempt=execution['test_attempt'],
                               manifest=manifest)
-    if production and mode not in ('test', 'smoke', 'diagnose', 'pilot'):
+    if production and mode not in ('test', 'smoke', 'diagnose', 'pilot', 'train'):
         require(config['gate_holdout_seed'] is not None and
                 config['gate_holdout_seed'] == execution['holdout_seed'] and
                 execution['seed_audit_sha256'], 'final holdout seed unaudited')
@@ -237,8 +240,8 @@ def validate_read_only_preflight(workspace: Path, root: Path, manifest: dict,
                                  config: dict, baseline: dict, *, mode: str,
                                  gpu_mib: list[int]) -> None:
     """Permit tests and old-checkpoint diagnosis without choosing a final holdout."""
-    require(mode in ('test', 'smoke', 'diagnose', 'pilot'),
-            'only test/smoke/diagnose/pilot preflight may omit the final seed')
+    require(mode in ('test', 'smoke', 'diagnose', 'pilot', 'train'),
+            'only validated preparation/entrance training may omit the final seed')
     validate_components(workspace, root, manifest, config, baseline, production=True, mode=mode)
     require(len(gpu_mib) == 4 and all(0 <= value <= 256 for value in gpu_mib),
             'GPU busy or count != 4')
@@ -252,6 +255,10 @@ def validate_read_only_preflight(workspace: Path, root: Path, manifest: dict,
     if mode == 'pilot':
         from pilot_v1322 import validate_inputs
         spec = json.loads((root / 'configs/pilot_execution.json').read_text(encoding='utf-8'))
+        validate_inputs(root, workspace, manifest, config, spec)
+    if mode == 'train':
+        from train_entrance_v1322 import validate_inputs
+        spec = json.loads((root / 'configs/train_entrance_execution.json').read_text(encoding='utf-8'))
         validate_inputs(root, workspace, manifest, config, spec)
 
 
@@ -274,7 +281,7 @@ def main() -> int:
         require(workspace.is_dir(), 'remote workspace not mounted; remote check pending')
         mode_arg = sys.argv[1] if len(sys.argv) > 1 else 'preflight'
         require(mode_arg in ('preflight', 'preflight-test', 'preflight-smoke',
-                             'preflight-diagnose', 'preflight-pilot'),
+                             'preflight-diagnose', 'preflight-pilot', 'preflight-train'),
                 'unknown read-only preflight mode')
         import fcntl
         lock = workspace / 'reports/v7_sim.lock'

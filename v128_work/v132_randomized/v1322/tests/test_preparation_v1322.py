@@ -112,7 +112,7 @@ class PreparationTests(unittest.TestCase):
             source_a.write_bytes(b'drift')
             with self.assertRaisesRegex(ValueError, 'candidate'):
                 production.check_targets(rows, workspace)
-            with self.assertRaisesRegex(ValueError, 'training'):
+            with self.assertRaisesRegex(ValueError, 'explicit authorization absent'):
                 production.run('train', ROOT, workspace)
 
     def test_production_test_and_smoke_commands_no_training(self):
@@ -163,7 +163,7 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(old.read_text(), 'failed first attempt preserved')
             self.assertEqual(new.read_text(), 'second attempt already used')
             with self.assertRaisesRegex(ValueError, 'not implemented'):
-                self.guard.validate_mode_outputs(workspace, 'train', 'unique', attempt=3)
+                self.guard.validate_mode_outputs(workspace, 'final', 'unique', attempt=3)
 
     def test_legacy_test_overlays_exercise_explicit_default_and_production_environments(self):
         manifest = json.loads((ROOT / 'configs/manifest.json').read_text())

@@ -1,0 +1,17 @@
+{
+  "purpose": "manually authorized entrance-only 50+600 training; no automatic gate",
+  "frozen_manifest_sha256": "32ba96bf58efa9fc79f78febfd186c35062fbf1b89e9787209909f1e87f3da8f",
+  "pilot_receipt_sha256": "e861917d1f4784334cd628f957f39cfd6853edefb74688742ab9d63d4ac72912",
+  "pilot_spec_sha256": "4ac57ffe273465c135b2e5abfde534330fa11c11cb3c1d0c7d326f912606dfcb",
+  "source_plan_sha256": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b",
+  "initial_checkpoint_sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450",
+  "original_torchrun_launcher_sha256": "9a1f496c6f1b575f2150aaa28c5ebca42b53dc3e6bf3d1080a297ad471d88a55",
+  "run_id": "go1-v1322-real-entrance-s01-p1-d1",
+  "num_envs": 512,
+  "iterations": 650,
+  "critic_warmup_iterations": 50,
+  "seed": 42,
+  "final_holdout": false,
+  "automatic_gate_authorized": false,
+  "automatic_junction_authorized": false
+}
