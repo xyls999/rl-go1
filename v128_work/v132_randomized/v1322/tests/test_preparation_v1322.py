@@ -32,6 +32,115 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(manifest['baseline']['geometry.py'],
                          'f60a374596427cc61cad38b6c2e5a1da77f4ff7889906e984c944ad6f736e6b1')
 
+    def test_production_test_smoke_contract_requires_all_runtime_imports(self):
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        names = {row['name'] for row in manifest['sources']}
+        self.assertIn('landing_stability_v131.py', names)
+        self.assertTrue(hasattr(self.guard, 'validate_live_baseline'))
+        self.assertTrue(hasattr(self.guard, 'validate_mode_outputs'))
+        self.assertTrue((ROOT / 'scripts/production_v1322.py').is_file())
+        source = (ROOT / 'scripts/production_v1322.py').read_text()
+        self.assertIn('sim.sh', source)
+        self.assertIn('test', source)
+        self.assertIn('combined_part_entrance', source)
+        self.assertIn('combined_junction', source)
+        self.assertIn('gaps_long', source)
+        self.assertIn('tire_field', source)
+        self.assertNotIn('run_teacher_v1322.py', source)
+
+    def test_production_overlay_restores_existing_and_new_on_failure(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        try:
+            import production_v1322 as production
+        finally:
+            sys.path.pop(0)
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            (workspace / 'reports').mkdir()
+            existing = workspace / 'source/old.py'
+            existing.parent.mkdir()
+            existing.write_bytes(b'original')
+            absent = workspace / 'source/new.py'
+            source_a = workspace / 'candidate_a.py'
+            source_b = workspace / 'candidate_b.py'
+            source_a.write_bytes(b'new old')
+            source_b.write_bytes(b'new helper')
+            rows = [(source_a, existing, self.guard.digest(existing), self.guard.digest(source_a)),
+                    (source_b, absent, None, self.guard.digest(source_b))]
+            for error in (ValueError('test failure'), KeyboardInterrupt('signal')):
+                with self.assertRaises(type(error)):
+                    with production.Overlay(rows, workspace) as overlay:
+                        self.assertEqual(existing.read_bytes(), b'new old')
+                        self.assertEqual(absent.read_bytes(), b'new helper')
+                        raise error
+                self.assertTrue(overlay.restored)
+                self.assertEqual(existing.read_bytes(), b'original')
+                self.assertFalse(absent.exists())
+                self.assertFalse(list((workspace / 'reports').glob('v1322-overlay-*')))
+            copy = production.atomic_copy
+            count = 0
+            def interrupted_copy(source, destination, expected):
+                nonlocal count
+                count += 1
+                if count == 2:
+                    raise KeyboardInterrupt('interrupted before second atomic swap')
+                return copy(source, destination, expected)
+            with patch.object(production, 'atomic_copy', side_effect=interrupted_copy):
+                with self.assertRaises(KeyboardInterrupt):
+                    with production.Overlay(rows, workspace):
+                        pass
+            self.assertEqual(existing.read_bytes(), b'original')
+            self.assertFalse(absent.exists())
+            source_a.write_bytes(b'drift')
+            with self.assertRaisesRegex(ValueError, 'candidate'):
+                production.check_targets(rows, workspace)
+            with self.assertRaisesRegex(ValueError, 'training'):
+                production.run('train', ROOT, workspace)
+
+    def test_production_test_and_smoke_commands_no_training(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        try:
+            import production_v1322 as production
+        finally:
+            sys.path.pop(0)
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            test_rows = production.targets(ROOT, workspace, manifest, 'test')
+            smoke_rows = production.targets(ROOT, workspace, manifest, 'smoke')
+            self.assertEqual(len(test_rows), len(manifest['sources']) + 2)
+            self.assertEqual(len(smoke_rows), len(manifest['sources']))
+            self.assertFalse(any('rewards_stage1_gaps' in str(live) for _, live, _, _ in test_rows))
+            for name, _ in production.FAMILIES:
+                command = production.smoke_command(workspace, name, 'unique', 9700)
+                self.assertEqual(command[1:3], ['check', '--stage'])
+                self.assertEqual(command[command.index('--num-envs') + 1], '512')
+                self.assertNotIn('train', command)
+            environment = production.common_environment(workspace, manifest)
+            self.assertEqual(environment['GO1_REWARD_CONFIG_PATH'],
+                             str(workspace / manifest['execution']['train_and_gate_env']['GO1_REWARD_CONFIG_PATH']))
+            self.assertNotIn('GO1_AUTO_P2', environment)
+
+    def test_production_preflight_rejects_missing_cli_pin_and_stale_mode_outputs(self):
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            live = workspace / manifest['sources'][0]['live']
+            live.parent.mkdir(parents=True)
+            live.write_text('active CLI')
+            with self.assertRaisesRegex(ValueError, 'unexpected unpinned'):
+                self.guard.validate_live_baseline(workspace, {
+                    'sources': [manifest['sources'][0]], 'baseline': {'cli.py': None}}, production=True)
+            (workspace / 'v128_work/v132_randomized/v1322/reports').mkdir(parents=True)
+            self.guard.validate_mode_outputs(workspace, 'test', 'unique')
+            (workspace / 'v128_work/v132_randomized/v1322/reports/v1322_test.receipt').write_text('old')
+            with self.assertRaisesRegex(ValueError, 'mode output already exists'):
+                self.guard.validate_mode_outputs(workspace, 'test', 'unique')
+            with self.assertRaisesRegex(ValueError, 'not implemented'):
+                self.guard.validate_mode_outputs(workspace, 'train', 'unique')
+
     def test_configuration_preserves_parity_and_avoids_old_outputs(self):
         cfg = json.loads((ROOT / 'configs/teacher_entrance.json').read_text())
         old = json.loads((ROOT / 'provenance/v1321_teacher_entrance.json').read_text())

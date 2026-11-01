@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Task 3 preparation ONLY: production can preflight (fail closed); sandbox may
-# exercise overlay restoration. No production overlay, Isaac or train mode exists.
+# Only explicitly authorized test and four-family PhysX modes can overlay live
+# sources. Training and evaluation modes do not exist in this script.
 set -Eeuo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 mode="${1:-}"
@@ -16,7 +16,8 @@ if [[ "$mode" == mock-restore || "$mode" == mock-signal ]]; then
          source/go1_hier_sim/go1_hier_sim/envs/config.py
          source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py
          source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py
-         source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py)
+         source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py
+         source/go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py)
   for rel in "${files[@]}"; do
     [[ ! -L "$workspace/$rel" ]] || { echo 'MOCK_DENIED: symlinked target' >&2; exit 84; }
   done
@@ -62,13 +63,24 @@ if [[ "$mode" == mock-restore || "$mode" == mock-signal ]]; then
   [[ "$mode" != mock-signal ]] || kill -TERM "$$"
   false # deliberate failure exercises the EXIT trap (never a real run)
 fi
-if [[ "$mode" != preflight || "${PREFLIGHT_ONLY:-}" != 1 || "${V1322_MOCK:-}" == 1 ]]; then
-  echo 'BLOCKED: Task 3 preparation has no production overlay or training mode' >&2
+if [[ "$mode" != preflight && "$mode" != test && "$mode" != smoke ]] || [[ "${V1322_MOCK:-}" == 1 ]]; then
+  echo 'BLOCKED: training and final gate are not implemented in this runner' >&2
   exit 85
+fi
+if [[ "$mode" == preflight ]]; then
+  [[ "${PREFLIGHT_ONLY:-}" == 1 ]] || { echo 'PREFLIGHT_ONLY=1 required' >&2; exit 85; }
+else
+  [[ "${V1322_RUN_AUTHORIZED:-}" == 'test-smoke-only' && "${PREFLIGHT_ONLY:-0}" != 1 ]] || {
+    echo 'BLOCKED: test/smoke needs explicit authorization' >&2; exit 85;
+  }
 fi
 command -v flock >/dev/null || { echo 'PREFLIGHT_BLOCKED: exclusive flock unavailable' >&2; exit 86; }
 workspace=/config/Desktop/sim
 [[ -d "$workspace/reports" ]] || { echo 'PREFLIGHT_BLOCKED: remote workspace not mounted' >&2; exit 86; }
 exec 9>>"$workspace/reports/v7_sim.lock"
 flock -n 9 || { echo 'PREFLIGHT_BLOCKED: simulator lock busy' >&2; exit 86; }
-/root/env_isaaclab/bin/python "$root/scripts/preflight_v1322.py"
+if [[ "$mode" == preflight ]]; then
+  /root/env_isaaclab/bin/python "$root/scripts/preflight_v1322.py"
+else
+  exec /root/env_isaaclab/bin/python "$root/scripts/production_v1322.py" "$mode"
+fi

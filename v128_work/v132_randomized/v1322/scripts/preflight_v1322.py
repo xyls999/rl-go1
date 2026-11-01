@@ -109,8 +109,42 @@ def validate_gate(report: dict, trace: list[dict], count: int, checkpoint_sha256
                          completions / count, abs_tol=1e-9), 'completion numerator mismatch')
 
 
+def validate_live_baseline(workspace: Path, manifest: dict, *, production: bool) -> None:
+    for row in manifest['sources']:
+        live_path = workspace / row['live']
+        expected = manifest['baseline'].get(row['name'])
+        require(not live_path.is_symlink() and not any(parent.is_symlink() for parent in live_path.parents
+                                                      if parent != workspace and workspace in parent.parents),
+                'symlinked live source: ' + row['live'])
+        if expected is None:
+            require(not live_path.exists(), 'unexpected unpinned live helper: ' + row['live'])
+        else:
+            require(live_path.is_file() and digest(live_path) == expected,
+                    'remote live SHA mismatch: ' + row['live'])
+        if production:
+            require(expected is not None or row['name'] not in ('cli.py', 'runtime.py', 'geometry.py', 'config.py'),
+                    'required live SHA unpinned: ' + row['live'])
+
+
+def validate_mode_outputs(workspace: Path, mode: str, run_id: str) -> None:
+    if mode not in ('test', 'smoke'):
+        raise ValueError('production mode not implemented: ' + mode)
+    names = (['v1322_tests.log', 'v1322_focus.log', 'v1322_test.receipt'] if mode == 'test' else
+             ['v1322_physx.receipt'] + [f'v1322_smoke_{family}.log' for family in
+                                     ('entrance', 'junction', 'long', 'tire')] +
+             [f'v1322_smoke_plan_{family}.json' for family in
+              ('entrance', 'junction', 'long', 'tire')])
+    for name in names:
+        path = workspace / 'v128_work/v132_randomized/v1322/reports' / name
+        require(not path.exists() and not path.is_symlink(), 'mode output already exists: ' + str(path))
+    if mode == 'smoke':
+        for family in ('entrance', 'junction', 'long', 'tire'):
+            path = workspace / 'reports' / f'check_v1322-{run_id}-{family}.json'
+            require(not path.exists() and not path.is_symlink(), 'smoke check already exists: ' + str(path))
+
+
 def validate_components(workspace: Path, root: Path, manifest: dict, config: dict,
-                        baseline: dict, *, production: bool) -> None:
+                        baseline: dict, *, production: bool, mode: str = 'final') -> None:
     validate_config(config, baseline)
     validate_pilot(json.loads((root / 'configs/pilot_plan.json').read_text()), config, manifest)
     require(digest(root / 'configs/teacher_entrance.json') == manifest['configuration_sha256'],
@@ -130,13 +164,7 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
         seen.add(live)
         require(digest(root / row['candidate']) == row['candidate_sha256'],
                 'candidate source hash drift: ' + live)
-        live_path = workspace / live
-        expected = manifest['baseline'].get(row['name'])
-        if expected is None:
-            require(not live_path.exists(), 'unexpected unpinned live helper: ' + live)
-        else:
-            require(live_path.is_file() and digest(live_path) == expected,
-                    'remote live SHA mismatch: ' + live)
+    validate_live_baseline(workspace, manifest, production=production)
     execution = manifest['execution']
     run_id = execution['run_id']
     require(run_id.startswith('go1-v1322-') and '/' not in run_id and '..' not in run_id,
@@ -156,7 +184,9 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
             'train/gate reward or observation mask changed')
     require(not any(key in env for key in ('GO1_V29_TEACHER_DISTILL', 'GO1_WATCHDOG', 'GO1_AUTO_P2')),
             'forbidden automation enabled')
-    if production:
+    if production and mode in ('test', 'smoke'):
+        validate_mode_outputs(workspace, mode, run_id)
+    if production and mode not in ('test', 'smoke'):
         require(config['gate_holdout_seed'] is not None and
                 config['gate_holdout_seed'] == execution['holdout_seed'] and
                 execution['seed_audit_sha256'], 'final holdout seed unaudited')
@@ -164,7 +194,8 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
                 and execution['checkpoint_sha256'], 'initial checkpoint not owner-approved')
         require(digest(workspace / config['init_checkpoint']) == execution['checkpoint_sha256'],
                 'initial checkpoint SHA mismatch')
-        require(execution['remote_attestation_sha256'] and all(manifest['baseline'].values()),
+        require(execution['remote_attestation_sha256'] and
+                all(manifest['baseline'][name] for name in ('cli.py', 'runtime.py', 'geometry.py', 'config.py')),
                 'remote live SHA/GPU/lock attestation pending')
 
 
