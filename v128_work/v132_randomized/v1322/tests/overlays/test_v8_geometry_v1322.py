@@ -72,7 +72,11 @@ def test_production_threshold_keeps_all_six_combined_gap_boundaries_reward_only(
     assert bounds.shape == (4, 24, 3)
     assert np.isfinite(bounds[0]).all(axis=1).sum() == 6
     assert np.isfinite(bounds[1]).all(axis=1).sum() > 3
-    assert np.isnan(bounds[2:]).all()
+    short_gaps = mesh.metadata["terrain_randomization"][2]["gaps"]
+    assert short_gaps and all(gap["width"] > 0.05 for gap in short_gaps)
+    assert np.isfinite(bounds[2, :len(short_gaps)]).all()
+    assert np.isnan(bounds[2, len(short_gaps):]).all()
+    assert np.isnan(bounds[3]).all()
     assert origins.shape == (4, 3)
 
 

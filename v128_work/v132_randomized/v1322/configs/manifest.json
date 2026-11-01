@@ -19,7 +19,7 @@
     "run_id": "go1-v1322-real-entrance-s01-p1-d1",
     "seed_audit_sha256": null,
     "strict_gate_envs": 512,
-    "test_attempt": 2,
+    "test_attempt": 3,
     "train_and_gate_env": {
       "GO1_FALL_RELATIVE": "1",
       "GO1_POLICY_VARIANT": "map_attn_v3",
@@ -125,7 +125,7 @@
     },
     {
       "candidate": "v128_work/v132_randomized/v1322/tests/overlays/test_v8_geometry_v1322.py",
-      "candidate_sha256": "b8692bba6ab048d06ffecefef09e39be3b24072669c622f7c19fc77e46326a24",
+      "candidate_sha256": "3da1d50095a892e7901b541008ed6666ea2d4ff78d792dfbab2c6cb97e54c441",
       "live": "tests/test_v8_geometry.py",
       "baseline_sha256": "54ef4a4f384bc13f72a17d6c3e05cd7537aa881eee23e96b9f786760d070dc6d"
     },

@@ -159,9 +159,11 @@ class PreparationTests(unittest.TestCase):
             new.write_text('second attempt already used')
             with self.assertRaisesRegex(ValueError, 'mode output already exists'):
                 self.guard.validate_mode_outputs(workspace, 'test', 'unique', attempt=2)
+            self.guard.validate_mode_outputs(workspace, 'test', 'unique', attempt=3)
             self.assertEqual(old.read_text(), 'failed first attempt preserved')
+            self.assertEqual(new.read_text(), 'second attempt already used')
             with self.assertRaisesRegex(ValueError, 'not implemented'):
-                self.guard.validate_mode_outputs(workspace, 'train', 'unique', attempt=2)
+                self.guard.validate_mode_outputs(workspace, 'train', 'unique', attempt=3)
 
     def test_legacy_test_overlays_exercise_explicit_default_and_production_environments(self):
         manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
@@ -200,19 +202,21 @@ class PreparationTests(unittest.TestCase):
         finally:
             sys.path.pop(0)
         manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
-        self.assertEqual(manifest['execution']['test_attempt'], 2)
-        names = production.attempt_artifacts(2)
-        self.assertEqual(names['test_log'], 'v1322_tests_a02.log')
-        self.assertEqual(names['focus_log'], 'v1322_focus_a02.log')
-        self.assertEqual(names['test_receipt'], 'v1322_test_a02.receipt')
-        self.assertEqual(names['smoke_receipt'], 'v1322_physx_a02.receipt')
-        self.assertNotEqual(names['test_log'], 'v1322_tests.log')
+        self.assertEqual(manifest['execution']['test_attempt'], 3)
+        names = production.attempt_artifacts(3)
+        self.assertEqual(names['test_log'], 'v1322_tests_a03.log')
+        self.assertEqual(names['focus_log'], 'v1322_focus_a03.log')
+        self.assertEqual(names['test_receipt'], 'v1322_test_a03.receipt')
+        self.assertEqual(names['smoke_receipt'], 'v1322_physx_a03.receipt')
+        self.assertNotIn(names['test_log'], ('v1322_tests.log', 'v1322_tests_a02.log'))
         with tempfile.TemporaryDirectory() as temp:
             reports = Path(temp) / 'reports'
             reports.mkdir()
             (reports / 'v1322_tests.log').write_text('first failed attempt')
+            (reports / 'v1322_tests_a02.log').write_text('second failed attempt')
             self.assertEqual((reports / 'v1322_tests.log').read_text(), 'first failed attempt')
-            self.assertNotIn('v1322_tests.log', names.values())
+            self.assertEqual((reports / 'v1322_tests_a02.log').read_text(), 'second failed attempt')
+            self.assertNotIn('v1322_tests_a02.log', names.values())
 
     def test_configuration_preserves_parity_and_avoids_old_outputs(self):
         cfg = json.loads((ROOT / 'configs/teacher_entrance.json').read_text())
