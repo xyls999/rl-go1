@@ -1,4 +1,5 @@
 """Development-only replay must not become a final holdout or start training."""
+from copy import deepcopy
 import importlib
 import json
 from pathlib import Path
@@ -98,26 +99,46 @@ class DiagnosisTests(unittest.TestCase):
                     diagnosis.validate_outputs(artifacts)
                 artifacts[key].unlink()
 
-    def test_old_gate_plan_requires_real_entrance_and_matched_speed_band(self):
+    def test_old_gate_plan_requires_pinned_provenance_and_complete_slot_metadata(self):
         diagnosis = importlib.import_module('diagnostic_v1322')
+        source = ROOT / 'provenance/v1321_gate_plan.json'
+        expected_sha256 = 'e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b'
+        self.assertEqual(preflight.digest(source), expected_sha256)
         with tempfile.TemporaryDirectory() as temp:
             paths = diagnosis.artifacts(Path(temp), self.manifest)
             paths['plan'].parent.mkdir(parents=True)
-            plan = {'families': ['combined_part_entrance'] * 512,
-                    'difficulty': [0.1] * 512, 'speed_min': .35, 'speed_max': .8,
-                    'instances': [['combined_part_entrance', 1, 2] for _ in range(512)]}
             with self.assertRaisesRegex(ValueError, 'plan missing'):
                 diagnosis.validate_plan(paths, self.config)
-            paths['plan'].write_text(json.dumps(plan))
-            self.assertEqual(diagnosis.validate_plan(paths, self.config), preflight.digest(paths['plan']))
-            for field, changed in (('families', ['combined'] + plan['families'][1:]),
-                                   ('difficulty', [.7] + plan['difficulty'][1:]),
-                                   ('speed_min', .30),
-                                   ('instances', [['combined', 1, 2]] + plan['instances'][1:])):
-                tampered = {**plan, field: changed}
+            paths['plan'].write_bytes(source.read_bytes())
+            self.assertEqual(diagnosis.validate_plan(paths, self.config), expected_sha256)
+            original = json.loads(source.read_text(encoding='utf-8'))
+            for field in ('instances', 'speed_level', 'difficulty_level', 'allowed_speed_levels'):
+                tampered = deepcopy(original)
+                del tampered[field]
                 paths['plan'].write_text(json.dumps(tampered))
-                with self.subTest(field=field), self.assertRaises(ValueError):
+                with self.subTest(missing=field), self.assertRaises(ValueError):
                     diagnosis.validate_plan(paths, self.config)
+            for field, changed in (
+                    ('families', ['combined'] + original['families'][1:]),
+                    ('difficulty', [.7] + original['difficulty'][1:]),
+                    ('difficulty_level', [3] + original['difficulty_level'][1:]),
+                    ('speed_level', [4 if original['speed_level'][0] != 4 else 0] + original['speed_level'][1:]),
+                    ('allowed_speed_levels', [0, 1, 2, 3, 5]),
+                    ('instances', [['combined', 0, 2]] + original['instances'][1:]),
+                    ('speed_min', .30),
+                    ('temperature', 100.0),
+            ):
+                tampered = deepcopy(original)
+                tampered[field] = changed
+                paths['plan'].write_text(json.dumps(tampered))
+                with self.subTest(changed=field), self.assertRaises(ValueError):
+                    diagnosis.validate_plan(paths, self.config)
+            paths['plan'].write_bytes(source.read_bytes())
+            tampered = deepcopy(original)
+            tampered['instances'][0][2] = 4
+            paths['plan'].write_text(json.dumps(tampered))
+            with self.assertRaises(ValueError):
+                diagnosis.validate_plan(paths, self.config)
 
     def test_shell_and_preflight_opt_in_and_no_final_holdout(self):
         shell = (ROOT / 'scripts/verify_and_train.sh').read_text()

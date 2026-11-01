@@ -11,6 +11,7 @@ FROZEN_MANIFEST_SHA256 = '32ba96bf58efa9fc79f78febfd186c35062fbf1b89e9787209909f
 FAILED_CHECKPOINT_SHA256 = '1740e37faec1d9f1f50020faf56690f30ef36712899e532c3db6ec4eecf95e2f'
 DEV_SEED = 2028  # Already used by V132.1: categorically not a final holdout.
 OLD_GATE_PLAN = 'reports/lp_gate_plan_go1-v1321-real-entrance-s01-p1-d1.json'
+DIAGNOSTIC_PLAN_CONFIG_SHA256 = 'd4b30a15bbc0a72de7bc9e49e49c7507b6861bf5cb4cab606717d6dc51649d9d'
 
 
 def artifacts(workspace: Path, manifest: dict) -> dict:
@@ -36,24 +37,53 @@ def validate_outputs(paths: dict) -> None:
 
 
 def validate_plan(paths: dict, config: dict) -> str:
+    root = Path(__file__).resolve().parents[1]
+    plan_config_path = root / 'configs/diagnostic_plan.json'
+    require(digest(plan_config_path) == DIAGNOSTIC_PLAN_CONFIG_SHA256,
+            'diagnostic plan provenance config changed')
+    pin = json.loads(plan_config_path.read_text(encoding='utf-8'))
+    require(pin['old_gate_plan'] == OLD_GATE_PLAN and pin['difficulty_levels'] == 7 and
+            pin['speed_levels'] == 5 and
+            pin['curriculum_source_sha256'] ==
+            '53451a81d582acab582a02f949efcfc85ccf327131cc0103d059dbb04d0a1ec4',
+            'diagnostic plan curriculum provenance changed')
+    expected = pin['old_gate_plan_sha256']
+    require(digest(root / pin['archived_plan']) == expected,
+            'archived V132.1 gate plan SHA mismatch')
     plan_path = paths['plan']
-    require(plan_path.is_file() and not plan_path.is_symlink(), 'V132.1 entrance gate plan missing')
+    require(plan_path.name == Path(OLD_GATE_PLAN).name and plan_path.is_file() and
+            not plan_path.is_symlink(), 'V132.1 entrance gate plan missing')
     plan = json.loads(plan_path.read_text(encoding='utf-8'))
     count = config['num_envs']
-    families, difficulties = plan.get('families'), plan.get('difficulty')
-    require(isinstance(families, list) and families == [config['gate_family']] * count and
-            isinstance(difficulties, list) and len(difficulties) == count and
-            all(type(value) in (int, float) and math.isfinite(value) and
-                0 <= value <= config['difficulty_max'] for value in difficulties),
-            'V132.1 gate plan does not cover 512 real entrance tiles')
+    require(count == 512, 'V132.1 gate plan requires 512 environments')
+    family = config['gate_family']
+    families = plan.get('families')
+    difficulties = plan.get('difficulty')
+    difficulty_levels = plan.get('difficulty_level')
+    speed_levels = plan.get('speed_level')
+    instances = plan.get('instances')
+    allowed_speeds = plan.get('allowed_speed_levels')
+    require(families == [family] * count and
+            all(isinstance(rows, list) and len(rows) == count for rows in
+                (difficulties, difficulty_levels, speed_levels, instances)),
+            'V132.1 gate plan lacks complete per-slot metadata')
+    require(isinstance(allowed_speeds, list) and allowed_speeds == list(range(pin['speed_levels'])),
+            'V132.1 gate allowed speed levels differ')
     require(plan.get('speed_min') == config['speed_min'] and
             plan.get('speed_max') == config['speed_max'], 'V132.1 gate speed band differs')
-    instances = plan.get('instances')
-    if instances is not None:
-        require(len(instances) == count and
-                all(isinstance(row, list) and len(row) == 3 and row[0] == config['gate_family']
-                    for row in instances), 'V132.1 gate instances differ from entrance family')
-    return digest(plan_path)
+    for index, row in enumerate(instances):
+        level, speed = difficulty_levels[index], speed_levels[index]
+        require(type(level) is int and 0 <= level < pin['difficulty_levels'] and
+                type(speed) is int and speed in allowed_speeds and
+                isinstance(row, list) and len(row) == 3 and row == [family, level, speed],
+                'V132.1 gate instance/difficulty/speed levels mismatch')
+        value = difficulties[index]
+        require(type(value) in (int, float) and math.isfinite(value) and
+                math.isclose(value, config['difficulty_max'] * level /
+                             (pin['difficulty_levels'] - 1), rel_tol=1e-9, abs_tol=1e-8),
+                'V132.1 gate difficulty differs from level')
+    require(digest(plan_path) == expected, 'original V132.1 gate plan SHA mismatch')
+    return expected
 
 
 def validate_receipts(root: Path, workspace: Path, manifest: dict) -> dict[str, str]:
