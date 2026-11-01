@@ -27,9 +27,11 @@ def entrance_support_step(bounds, local_x, foot_x, foot_z, contacts, root_z,
         raise ValueError('entrance support input shapes do not match [N,K] and [N,4]')
 
     start, far_lip, end = bounds.unbind(-1)
-    width = far_lip - start
+    # Geometry's void_end includes a fixed 0.05 m lip beyond the sampled opening.
+    physical_width = far_lip - start - .05
     valid = (torch.isfinite(bounds).all(-1) & torch.isfinite(local_x[:, None]) &
-             (width >= .08 - 1e-5) & (width <= .24 + 1e-5) & (end > far_lip) &
+             (physical_width >= .08 - 1e-5) & (physical_width <= .24 + 1e-5) &
+             (end > far_lip) &
              ~paid & entrance_mask[:, None])
     x = local_x[:, None]
     approach_start = start - .45

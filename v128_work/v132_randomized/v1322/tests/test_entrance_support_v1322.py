@@ -20,7 +20,7 @@ class EntranceSupportReward(unittest.TestCase):
     def setUp(self):
         self.step = load_helper()
         self.bounds = torch.full((2, 24, 3), float('nan'))
-        self.bounds[:, 0] = torch.tensor([1.50, 1.62, 2.42])
+        self.bounds[:, 0] = torch.tensor([1.50, 1.67, 2.42])  # 0.12 m opening + 0.05 m lip
         self.x = torch.tensor([1.35, 1.35])
         self.foot_x = torch.full((2, 4), 1.30)
         self.foot_z = torch.zeros(2, 4)
@@ -93,6 +93,18 @@ class EntranceSupportReward(unittest.TestCase):
         self.assertGreater(score[0].item(), 0)
         self.assertEqual(score[1].item(), 0)
         self.assertAlmostEqual(next_watermark[1, 0].item(), 1.35, places=5)
+
+    def test_physical_entrance_width_includes_five_centimeter_metadata_lip(self):
+        # Geometry records void_end = start + physical_width + 0.05 m lip.
+        # In particular, the widest valid 0.24 m opening has a 0.29 m span.
+        for physical_width, rewarded in ((.07, False), (.08, True), (.24, True), (.25, False)):
+            with self.subTest(physical_width=physical_width):
+                self.bounds[0, 0, 1] = 1.50 + physical_width + .05
+                score, _ = self.score()
+                if rewarded:
+                    self.assertGreater(score[0].item(), 0)
+                else:
+                    self.assertEqual(score[0].item(), 0)
 
     def test_invalid_bounds_cannot_contaminate_score(self):
         self.bounds[0, 0] = torch.tensor([1.50, 1.50, 2.42])
