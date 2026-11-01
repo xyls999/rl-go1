@@ -431,7 +431,7 @@ def run(mode: str, root: Path, workspace: Path) -> None:
                 result = run_diagnosis(workspace, root, manifest, config,
                                        environment, diagnosis_paths, lineage)
             else:
-                result = run_pilot(workspace, root, manifest, config,
+                result = run_pilot(workspace, root, manifest, config, pilot_spec,
                                    environment, pilot_paths, pilot_inputs)
         require(overlay.restored, 'overlay not restored')
         require(digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'],
@@ -459,8 +459,8 @@ def main() -> int:
     try:
         mode = sys.argv[1]
         run(mode, Path(__file__).resolve().parents[1], Path('/config/Desktop/sim'))
-    except (IndexError, OSError, ValueError, RuntimeError, subprocess.CalledProcessError,
-            KeyboardInterrupt) as error:
+    except (IndexError, OSError, TypeError, ValueError, RuntimeError,
+            subprocess.CalledProcessError, KeyboardInterrupt) as error:
         print(f'V1322_BLOCKED: {error}', file=sys.stderr)
         return 1
     return 0

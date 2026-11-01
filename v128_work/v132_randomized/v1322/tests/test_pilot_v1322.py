@@ -1,7 +1,10 @@
 """A paired pilot must preserve every input but the supported-short TOML weight."""
 import importlib
+import io
 import json
+from contextlib import redirect_stderr
 from pathlib import Path
+from types import SimpleNamespace
 import sys
 import tempfile
 import unittest
@@ -206,6 +209,65 @@ class PilotTests(unittest.TestCase):
             self.assertFalse(paths['receipt'].exists())
             self.assertFalse(paths['treatment_train_log'].exists())
             self.assertEqual(production.digest(paths['plan']), self.spec['plan_sha256'])
+
+    def test_pilot_dispatch_passes_validated_spec_to_eight_argument_runner(self):
+        production = importlib.import_module('production_v1322')
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            root = workspace / 'v128_work/v132_randomized/v1322'
+            (workspace / 'reports').mkdir()
+            lock_path = workspace / 'reports/v7_sim.lock'
+            lock_path.touch()
+            (root / 'configs').mkdir(parents=True)
+            (root / 'reports').mkdir()
+            (root / 'provenance').mkdir()
+            for relative in ('configs/manifest.json', 'configs/teacher_entrance.json',
+                             'configs/pilot_execution.json',
+                             'provenance/v1321_teacher_entrance.json'):
+                (root / relative).write_bytes((ROOT / relative).read_bytes())
+            reward = root / self.manifest['reward_config']['path']
+            reward.write_bytes((ROOT / self.manifest['reward_config']['path']).read_bytes())
+            receipt = root / 'reports/dispatch.receipt'
+            paths = {'receipt': receipt}
+            inputs = {'pinned': True}
+            captured = []
+
+            def pilot_runner(actual_workspace, actual_root, manifest, config, spec,
+                             environment, actual_paths, actual_inputs):
+                captured.append((actual_workspace, actual_root, manifest, config, spec,
+                                 environment, actual_paths, actual_inputs))
+                return {'automatic_full_training_authorized': False}
+
+            fake_fcntl = SimpleNamespace(LOCK_EX=2, LOCK_NB=4, flock=lambda *_: None)
+            with patch.dict(sys.modules, {'fcntl': fake_fcntl}), patch.dict(
+                    'os.environ', {'V1322_RUN_AUTHORIZED': 'paired-pilot-only'}), patch.object(
+                    production.os, 'fstat', return_value=SimpleNamespace(st_ino=lock_path.stat().st_ino)), patch.object(
+                    production, 'validate_components'), patch.object(
+                    production, 'ensure_idle'), patch.object(
+                    production, 'targets', return_value=[]), patch.object(
+                    production, 'check_targets'), patch.object(
+                    production.pilot_v1322, 'validate_inputs', return_value=(paths, inputs)), patch.object(
+                    production, 'Overlay') as overlay_type, patch.object(
+                    production, 'run_pilot', side_effect=pilot_runner):
+                overlay_type.return_value.__enter__.return_value = SimpleNamespace(restored=True)
+                production.run('pilot', root, workspace)
+
+            self.assertEqual(len(captured), 1)
+            self.assertEqual(captured[0][:5],
+                             (workspace, root, self.manifest, self.config, self.spec))
+            self.assertIs(captured[0][6], paths)
+            self.assertIs(captured[0][7], inputs)
+            self.assertEqual(captured[0][5]['GO1_REWARD_CONFIG_PATH'], str(reward))
+            self.assertEqual(json.loads(receipt.read_text())['status'], 'pilot-diagnostic-only')
+
+    def test_wrong_pilot_signature_is_reported_as_blocked_not_uncaught(self):
+        production = importlib.import_module('production_v1322')
+        with patch.object(production, 'run', side_effect=TypeError('pilot interface mismatch')):
+            with patch.object(sys, 'argv', ['production_v1322.py', 'pilot']):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    self.assertEqual(production.main(), 1)
+        self.assertIn('V1322_BLOCKED: pilot interface mismatch', stderr.getvalue())
 
 
 if __name__ == '__main__':
