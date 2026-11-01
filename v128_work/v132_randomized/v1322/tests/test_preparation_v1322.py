@@ -127,7 +127,7 @@ class PreparationTests(unittest.TestCase):
             workspace = Path(temp)
             test_rows = production.targets(ROOT, workspace, manifest, 'test')
             smoke_rows = production.targets(ROOT, workspace, manifest, 'smoke')
-            self.assertEqual(len(test_rows), len(manifest['sources']) + 2)
+            self.assertEqual(len(test_rows), len(manifest['sources']) + 4)
             self.assertEqual(len(smoke_rows), len(manifest['sources']))
             self.assertFalse(any('rewards_stage1_gaps' in str(live) for _, live, _, _ in test_rows))
             for name, _ in production.FAMILIES:
@@ -151,12 +151,68 @@ class PreparationTests(unittest.TestCase):
                 self.guard.validate_live_baseline(workspace, {
                     'sources': [manifest['sources'][0]], 'baseline': {'cli.py': None}}, production=True)
             (workspace / 'v128_work/v132_randomized/v1322/reports').mkdir(parents=True)
-            self.guard.validate_mode_outputs(workspace, 'test', 'unique')
-            (workspace / 'v128_work/v132_randomized/v1322/reports/v1322_test.receipt').write_text('old')
+            self.guard.validate_mode_outputs(workspace, 'test', 'unique', attempt=2)
+            old = workspace / 'v128_work/v132_randomized/v1322/reports/v1322_tests.log'
+            old.write_text('failed first attempt preserved')
+            self.guard.validate_mode_outputs(workspace, 'test', 'unique', attempt=2)
+            new = workspace / 'v128_work/v132_randomized/v1322/reports/v1322_test_a02.receipt'
+            new.write_text('second attempt already used')
             with self.assertRaisesRegex(ValueError, 'mode output already exists'):
-                self.guard.validate_mode_outputs(workspace, 'test', 'unique')
+                self.guard.validate_mode_outputs(workspace, 'test', 'unique', attempt=2)
+            self.assertEqual(old.read_text(), 'failed first attempt preserved')
             with self.assertRaisesRegex(ValueError, 'not implemented'):
-                self.guard.validate_mode_outputs(workspace, 'train', 'unique')
+                self.guard.validate_mode_outputs(workspace, 'train', 'unique', attempt=2)
+
+    def test_legacy_test_overlays_exercise_explicit_default_and_production_environments(self):
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        overlays = {row['live']: row for row in manifest['test_overlays']}
+        for target, baseline in (
+            ('tests/test_v8_geometry.py', 'test_v8_geometry.baseline.py'),
+            ('tests/test_v8_training_warmstart.py', 'test_v8_training_warmstart.baseline.py'),
+        ):
+            self.assertIn(target, overlays)
+            row = overlays[target]
+            self.assertEqual(row['baseline_sha256'],
+                             self.guard.digest(ROOT / 'provenance' / baseline))
+            source = ROOT.parents[2] / row['candidate']
+            self.assertTrue(source.is_file(), row['candidate'])
+            self.assertEqual(self.guard.digest(source), row['candidate_sha256'])
+            text = source.read_text(encoding='utf-8')
+            if 'geometry' in target:
+                self.assertIn('GO1_V8_LONG_GAP_THRESHOLD', text)
+                self.assertIn('0.26', text)
+                self.assertIn('0.05', text)
+                self.assertIn('== 3', text)
+                self.assertIn('== 6', text)
+            else:
+                self.assertIn('GO1_PPO_CONFIG_PATH', text)
+                self.assertIn('ppo.json', text)
+                self.assertIn('ppo_gaps_long.json', text)
+                self.assertIn('[1e-7, 3e-5, 3e-6]', text)
+                self.assertIn('[2e-6, 3e-5, 2e-5]', text)
+                self.assertIn('len(assigned) == len(set(assigned))', text)
+
+    def test_attempt_artifacts_preserve_failed_attempt_and_bind_smoke(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        try:
+            import production_v1322 as production
+        finally:
+            sys.path.pop(0)
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        self.assertEqual(manifest['execution']['test_attempt'], 2)
+        names = production.attempt_artifacts(2)
+        self.assertEqual(names['test_log'], 'v1322_tests_a02.log')
+        self.assertEqual(names['focus_log'], 'v1322_focus_a02.log')
+        self.assertEqual(names['test_receipt'], 'v1322_test_a02.receipt')
+        self.assertEqual(names['smoke_receipt'], 'v1322_physx_a02.receipt')
+        self.assertNotEqual(names['test_log'], 'v1322_tests.log')
+        with tempfile.TemporaryDirectory() as temp:
+            reports = Path(temp) / 'reports'
+            reports.mkdir()
+            (reports / 'v1322_tests.log').write_text('first failed attempt')
+            self.assertEqual((reports / 'v1322_tests.log').read_text(), 'first failed attempt')
+            self.assertNotIn('v1322_tests.log', names.values())
 
     def test_configuration_preserves_parity_and_avoids_old_outputs(self):
         cfg = json.loads((ROOT / 'configs/teacher_entrance.json').read_text())

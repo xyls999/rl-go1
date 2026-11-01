@@ -21,9 +21,17 @@ from preflight_v1322 import (digest, gpu_usage_mib, require, validate_components
 
 FAMILIES = (('entrance', 'combined_part_entrance'), ('junction', 'combined_junction'),
             ('long', 'gaps_long'), ('tire', 'tire_field'))
-TEST_RECEIPT = 'v1322_test.receipt'
-SMOKE_RECEIPT = 'v1322_physx.receipt'
 _active_process: subprocess.Popen | None = None
+
+
+def attempt_artifacts(attempt: int) -> dict[str, str]:
+    require(type(attempt) is int and 1 <= attempt <= 99, 'invalid test attempt')
+    tag = f'a{attempt:02d}'
+    return {'test_log': f'v1322_tests_{tag}.log',
+            'focus_log': f'v1322_focus_{tag}.log',
+            'test_receipt': f'v1322_test_{tag}.receipt',
+            'smoke_receipt': f'v1322_physx_{tag}.receipt',
+            'smoke_prefix': f'v1322_smoke_{tag}_'}
 
 
 def targets(root: Path, workspace: Path, manifest: dict, mode: str) -> list[tuple[Path, Path, str | None, str]]:
@@ -190,14 +198,15 @@ def run_logged(command: list[str], log: Path, env: dict[str, str], workspace: Pa
 
 
 def run_tests(workspace: Path, root: Path, manifest: dict, env: dict[str, str]) -> dict:
-    focus = root / 'reports/v1322_focus.log'
+    names = attempt_artifacts(manifest['execution']['test_attempt'])
+    focus = root / 'reports' / names['focus_log']
     run_logged(['/root/env_isaaclab/bin/python', '-m', 'unittest', 'discover', '-s',
                 str(root / 'tests'), '-p', 'test_*v1322.py', '-v'], focus, env, workspace)
     focus_text = focus.read_text(encoding='utf-8', errors='replace')
     require(re.search(r'Ran \d+ tests?', focus_text) is not None and
             re.search(r'^OK\s*$', focus_text, re.MULTILINE) is not None,
             'V132.2 focused tests did not complete')
-    log = root / 'reports/v1322_tests.log'
+    log = root / 'reports' / names['test_log']
     run_logged([str(workspace / 'sim.sh'), 'test', '-q'], log, env, workspace)
     text = log.read_text(encoding='utf-8', errors='replace')
     require(re.search(r'\b\d+ passed\b', text) is not None and
@@ -207,16 +216,18 @@ def run_tests(workspace: Path, root: Path, manifest: dict, env: dict[str, str]) 
 
 
 def run_smoke(workspace: Path, root: Path, manifest: dict, env: dict[str, str]) -> dict:
+    names = attempt_artifacts(manifest['execution']['test_attempt'])
+    tag = f"a{manifest['execution']['test_attempt']:02d}"
     passed = {}
     for index, (family, kind) in enumerate(FAMILIES):
         ensure_idle()
-        plan = root / 'reports' / f'v1322_smoke_plan_{family}.json'
+        plan = root / 'reports' / f'v1322_smoke_plan_{tag}_{family}.json'
         with plan.open('x', encoding='utf-8') as stream:
             json.dump({'families': [kind] * 512, 'difficulty': [.6] * 512,
                        'speed_level': [2] * 512, 'speed_min': .35, 'speed_max': .8}, stream)
-        run_name = f"v1322-{manifest['execution']['run_id']}-{family}"
+        run_name = f"v1322-{manifest['execution']['run_id']}-{tag}-{family}"
         family_env = dict(env, GO1_TASK_PLAN=str(plan), GO1_RUN_ID=run_name)
-        log = root / 'reports' / f'v1322_smoke_{family}.log'
+        log = root / 'reports' / f"{names['smoke_prefix']}{family}.log"
         run_logged(smoke_command(workspace, family, run_name, 9700 + index), log,
                    family_env, workspace)
         report_path = workspace / 'reports' / f'check_{run_name}.json'
@@ -250,14 +261,15 @@ def run(mode: str, root: Path, workspace: Path) -> None:
     ensure_idle()
     rows = targets(root, workspace, manifest, mode)
     check_targets(rows, workspace)
+    names = attempt_artifacts(manifest['execution']['test_attempt'])
     if mode == 'smoke':
-        receipt = root / 'reports' / TEST_RECEIPT
+        receipt = root / 'reports' / names['test_receipt']
         require(receipt.is_file(), 'full project test receipt absent')
         previous = json.loads(receipt.read_text())
         require(previous.get('status') == 'passed' and previous.get('restored') is True and
                 previous.get('manifest_sha256') == digest(root / 'configs/manifest.json') and
-                previous.get('log_sha256') == digest(root / 'reports/v1322_tests.log') and
-                previous.get('focus_sha256') == digest(root / 'reports/v1322_focus.log') and
+                previous.get('log_sha256') == digest(root / 'reports' / names['test_log']) and
+                previous.get('focus_sha256') == digest(root / 'reports' / names['focus_log']) and
                 previous.get('reward_sha256') == manifest['reward_config']['sha256'],
                 'full project test receipt/source hash mismatch')
     environment = common_environment(workspace, manifest)
@@ -286,7 +298,7 @@ def run(mode: str, root: Path, workspace: Path) -> None:
         require(overlay.restored, 'overlay not restored')
         require(digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'],
                 'reward TOML changed during run')
-        receipt = root / 'reports' / (TEST_RECEIPT if mode == 'test' else SMOKE_RECEIPT)
+        receipt = root / 'reports' / names['test_receipt' if mode == 'test' else 'smoke_receipt']
         with receipt.open('x', encoding='utf-8') as stream:
             json.dump({'status': 'passed', 'mode': mode, 'restored': True,
                        'manifest_sha256': digest(root / 'configs/manifest.json'),

@@ -14,11 +14,12 @@
     "checkpoint_sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450",
     "holdout_seed": null,
     "initial_checkpoint": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
-    "remote_attestation_sha256": "7ecc14f0dc8636ea2cfdebadf7bdb82181f1aab39b124ac943cfc841cb6017fc",
+    "remote_attestation_sha256": "6ad645fc66e8170b8a34eed3654e7aafe95a99ed593239f471b6e702431852e1",
     "required_idle_gpu_mib_max": 256,
     "run_id": "go1-v1322-real-entrance-s01-p1-d1",
     "seed_audit_sha256": null,
     "strict_gate_envs": 512,
+    "test_attempt": 2,
     "train_and_gate_env": {
       "GO1_FALL_RELATIVE": "1",
       "GO1_POLICY_VARIANT": "map_attn_v3",
@@ -121,6 +122,18 @@
       "candidate_sha256": "f74641b8e0eae1de1aa44bcf0aaf3f398d5a27983bf373f20a2161ffa9ef5556",
       "live": "tests/test_geometry.py",
       "baseline_sha256": "d1851a7078c32355a0996cc37f15aae34d74d1d90443c43940b0d497275553b1"
+    },
+    {
+      "candidate": "v128_work/v132_randomized/v1322/tests/overlays/test_v8_geometry_v1322.py",
+      "candidate_sha256": "b8692bba6ab048d06ffecefef09e39be3b24072669c622f7c19fc77e46326a24",
+      "live": "tests/test_v8_geometry.py",
+      "baseline_sha256": "54ef4a4f384bc13f72a17d6c3e05cd7537aa881eee23e96b9f786760d070dc6d"
+    },
+    {
+      "candidate": "v128_work/v132_randomized/v1322/tests/overlays/test_v8_training_warmstart_v1322.py",
+      "candidate_sha256": "85c09c8b74dfab72fe6ad448e87de355320801f929e4a7df79c3c73e5991b4f0",
+      "live": "tests/test_v8_training_warmstart.py",
+      "baseline_sha256": "46d0d6bcd4a8d44fb8ebe36444de2b7c6f80a63d79e9bb8e42351d4613f9883d"
     }
   ],
   "version": 1

@@ -127,20 +127,24 @@ def validate_live_baseline(workspace: Path, manifest: dict, *, production: bool)
                     'required live SHA unpinned: ' + row['live'])
 
 
-def validate_mode_outputs(workspace: Path, mode: str, run_id: str) -> None:
+def validate_mode_outputs(workspace: Path, mode: str, run_id: str, *, attempt: int) -> None:
     if mode not in ('test', 'smoke'):
         raise ValueError('production mode not implemented: ' + mode)
-    names = (['v1322_tests.log', 'v1322_focus.log', 'v1322_test.receipt'] if mode == 'test' else
-             ['v1322_physx.receipt'] + [f'v1322_smoke_{family}.log' for family in
-                                     ('entrance', 'junction', 'long', 'tire')] +
-             [f'v1322_smoke_plan_{family}.json' for family in
-              ('entrance', 'junction', 'long', 'tire')])
+    from production_v1322 import attempt_artifacts
+    artifacts = attempt_artifacts(attempt)
+    tag = f'a{attempt:02d}'
+    families = ('entrance', 'junction', 'long', 'tire')
+    names = ([artifacts['test_log'], artifacts['focus_log'], artifacts['test_receipt']]
+             if mode == 'test' else
+             [artifacts['smoke_receipt']] +
+             [f"{artifacts['smoke_prefix']}{family}.log" for family in families] +
+             [f'v1322_smoke_plan_{tag}_{family}.json' for family in families])
     for name in names:
         path = workspace / 'v128_work/v132_randomized/v1322/reports' / name
         require(not path.exists() and not path.is_symlink(), 'mode output already exists: ' + str(path))
     if mode == 'smoke':
-        for family in ('entrance', 'junction', 'long', 'tire'):
-            path = workspace / 'reports' / f'check_v1322-{run_id}-{family}.json'
+        for family in families:
+            path = workspace / 'reports' / f'check_v1322-{run_id}-{tag}-{family}.json'
             require(not path.exists() and not path.is_symlink(), 'smoke check already exists: ' + str(path))
 
 
@@ -188,7 +192,7 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
     require(not any(key in env for key in ('GO1_V29_TEACHER_DISTILL', 'GO1_WATCHDOG', 'GO1_AUTO_P2')),
             'forbidden automation enabled')
     if production and mode in ('test', 'smoke'):
-        validate_mode_outputs(workspace, mode, run_id)
+        validate_mode_outputs(workspace, mode, run_id, attempt=execution['test_attempt'])
     if production and mode not in ('test', 'smoke'):
         require(config['gate_holdout_seed'] is not None and
                 config['gate_holdout_seed'] == execution['holdout_seed'] and
@@ -203,13 +207,15 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
 
 
 def validate_test_receipt(root: Path, manifest: dict) -> None:
-    receipt = root / 'reports/v1322_test.receipt'
+    from production_v1322 import attempt_artifacts
+    names = attempt_artifacts(manifest['execution']['test_attempt'])
+    receipt = root / 'reports' / names['test_receipt']
     require(receipt.is_file(), 'full project test receipt absent')
     previous = json.loads(receipt.read_text(encoding='utf-8'))
     require(previous.get('status') == 'passed' and previous.get('restored') is True and
             previous.get('manifest_sha256') == digest(root / 'configs/manifest.json') and
-            previous.get('log_sha256') == digest(root / 'reports/v1322_tests.log') and
-            previous.get('focus_sha256') == digest(root / 'reports/v1322_focus.log') and
+            previous.get('log_sha256') == digest(root / 'reports' / names['test_log']) and
+            previous.get('focus_sha256') == digest(root / 'reports' / names['focus_log']) and
             previous.get('reward_sha256') == manifest['reward_config']['sha256'],
             'full project test receipt/source hash mismatch')
 
