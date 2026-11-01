@@ -1,5 +1,5 @@
 {
-  "comment": "V132.2 entrance reward; preparation only: checkpoint and fresh holdout seed require owner choice and remote attestations",
+  "comment": "V132.2 entrance reward; original V132.1 training init model_299 read-only SHA verified; final holdout and remote checks remain pending",
   "training_roster": "single:combined_part_entrance",
   "gate_family": "combined_part_entrance",
   "difficulty_max": 0.6,
@@ -15,7 +15,7 @@
   "warmup": 50,
   "state": "v128_work/v132_randomized/v1322/reports/state_entrance.json",
   "sampler_state": "v128_work/v132_randomized/v1322/reports/sampler_entrance.json",
-  "init_checkpoint": null,
+  "init_checkpoint": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
   "gate": {
     "completion_gate": 0.9,
     "min_episodes": 200,

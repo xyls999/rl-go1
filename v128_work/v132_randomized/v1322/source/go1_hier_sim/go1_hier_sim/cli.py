@@ -911,7 +911,7 @@ def _evaluate(args):
     for item in records:
         slot = by_env.setdefault(str(int(item["env_id"])), {
             "episodes": 0, "success": 0, "survival": 0, "collision": 0,
-            "out_of_bounds": 0, "fell_into_gap": 0, "mean_failure_x": 0.0,
+            "fallen": 0, "out_of_bounds": 0, "fell_into_gap": 0, "mean_failure_x": 0.0,
             "sum_return": 0.0, "sum_steps": 0.0, "mean_return": 0.0,
             "mean_steps": 0.0,
         })
@@ -921,6 +921,7 @@ def _evaluate(args):
         # survival when it lasted at least SURVIVAL_STEPS.
         slot["survival"] += int(float(item.get("steps", 0.0)) >= SURVIVAL_STEPS)
         slot["collision"] += int(bool(item.get("collision", False)))
+        slot["fallen"] += int(bool(item.get("fallen", False)))
         slot["out_of_bounds"] += int(bool(item.get("out_of_bounds", False)))
         slot["fell_into_gap"] += int(bool(item.get("fell_into_gap", False)))
         slot["sum_return"] += float(item.get("mean_return", 0.0))

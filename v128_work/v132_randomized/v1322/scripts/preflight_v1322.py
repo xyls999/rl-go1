@@ -43,18 +43,28 @@ def validate_config(config: dict, baseline: dict) -> None:
                              and seed not in {42, 2026, 2028}), 'invalid final holdout seed')
 
 
-def validate_pilot(plan: dict, config: dict) -> None:
+def validate_pilot(plan: dict, config: dict, manifest: dict) -> None:
     require(plan['environment_count'] == 64 and plan['terrain_family'] == config['gate_family'],
             'pilot terrain or environment count changed')
     require(plan['only_reward_variable'] == 'supported_short_weight', 'pilot changes more than one variable')
+    approved_geometry = next(row['candidate_sha256'] for row in manifest['sources']
+                             if row['name'] == 'geometry.py')
+    execution = manifest['execution']
+    require(plan['geometry_sha256'] == approved_geometry, 'pilot geometry hash mismatch')
+    require(plan['initial_checkpoint'] == config['init_checkpoint'] == execution['initial_checkpoint']
+            and plan['checkpoint_sha256'] == execution['checkpoint_sha256'],
+            'pilot checkpoint differs from approved config/manifest')
+    require(type(plan['seed']) is int and plan['seed'] == execution['train_seed'],
+            'pilot seed differs from approved manifest')
     control, treatment = plan['arms']
     require(set(control) == set(treatment) and
             all(control[k] == treatment[k] for k in control if k not in {'name', 'supported_short_weight'})
             and control['supported_short_weight'] == 0 and treatment['supported_short_weight'] == .8,
             'pilot does not isolate supported_short')
     require(control['safe_segment_weight'] == 6.0 and
-            control['initial_checkpoint'] == treatment['initial_checkpoint'] and
-            control['seed'] == treatment['seed'], 'pilot checkpoint/seed/safe_segment parity failed')
+            all(arm['initial_checkpoint'] == plan['initial_checkpoint'] and
+                arm['seed'] == plan['seed'] for arm in (control, treatment)),
+            'pilot checkpoint/seed/safe_segment parity failed')
     require(plan['strict_gate_command_contract']['episodes'] == 512 and
             plan['strict_gate_command_contract']['strict_first_episode'] is True,
             'strict gate contract absent')
@@ -85,9 +95,10 @@ def validate_gate(report: dict, trace: list[dict], count: int, checkpoint_sha256
                 and 0 <= credited <= required, 'invalid entrance gap credit count')
         hard_clean = not any(row[k] for k in ('collision', 'fallen', 'out_of_bounds', 'fell_into_gap'))
         success = bool(row['success']) and hard_clean and credited == required
-        require(slot['success'] == int(bool(row['success'])) and
-                all(slot.get(key, 0) == int(bool(row[key]))
-                    for key in ('collision', 'out_of_bounds', 'fell_into_gap')),
+        terminal_keys = ('success', 'collision', 'fallen', 'out_of_bounds', 'fell_into_gap')
+        require(all(key in slot and slot[key] is not None for key in terminal_keys),
+                'report missing per-slot terminal flags')
+        require(all(slot[key] == int(bool(row[key])) for key in terminal_keys),
                 'terminal flags differ across report and trace')
         require(not bool(row['success']) or success, 'success credited without all gaps/hard safety')
         require(math.isfinite(float(row['course_x'])), 'nonfinite termination location')
@@ -101,7 +112,7 @@ def validate_gate(report: dict, trace: list[dict], count: int, checkpoint_sha256
 def validate_components(workspace: Path, root: Path, manifest: dict, config: dict,
                         baseline: dict, *, production: bool) -> None:
     validate_config(config, baseline)
-    validate_pilot(json.loads((root / 'configs/pilot_plan.json').read_text()), config)
+    validate_pilot(json.loads((root / 'configs/pilot_plan.json').read_text()), config, manifest)
     require(digest(root / 'configs/teacher_entrance.json') == manifest['configuration_sha256'],
             'V132.2 config hash drift')
     provenance = manifest['provenance']

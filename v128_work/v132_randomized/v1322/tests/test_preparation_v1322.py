@@ -1,4 +1,5 @@
 """Task 3 preparation contract; no Isaac, remote writes or real overlay."""
+import copy
 import importlib.util
 import json
 from pathlib import Path
@@ -44,7 +45,8 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(cfg[key], old[key])
         self.assertEqual(cfg['phases'][0]['disturbance'], old['phases'][0]['disturbance'])
         plan = json.loads((ROOT / 'configs/pilot_plan.json').read_text())
-        self.guard.validate_pilot(plan, cfg)
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        self.guard.validate_pilot(plan, cfg, manifest)
         self.assertEqual(plan['environment_count'], 64)
         self.assertEqual(plan['arms'][0]['initial_checkpoint'], plan['arms'][1]['initial_checkpoint'])
         self.assertEqual(plan['arms'][0]['seed'], plan['arms'][1]['seed'])
@@ -71,8 +73,51 @@ class PreparationTests(unittest.TestCase):
             self.guard.validate_gate(report, rows[:-1] + [{**rows[-1], 'required_gap_count': None}], 512, 'a'*64)
         with self.assertRaises(ValueError):
             self.guard.validate_gate(report, rows, 512, 'b'*64)
+        for missing in ('collision', 'fallen', 'out_of_bounds', 'fell_into_gap'):
+            incomplete = copy.deepcopy(report)
+            del incomplete['environments']['0'][missing]
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, 'terminal'):
+                self.guard.validate_gate(incomplete, rows, 512, 'a'*64)
         with self.assertRaises(ValueError):
             self.guard.validate_gate({**report, 'completion_rate': 1}, rows, 512, 'a'*64)
+
+    def test_cli_reports_per_slot_fallen_terminal_flag(self):
+        source = (ROOT / 'source/go1_hier_sim/go1_hier_sim/cli.py').read_text()
+        self.assertIn('slot["fallen"] += int(bool(item.get("fallen", False)))', source)
+
+    def test_pilot_binds_top_level_geometry_checkpoint_and_seed(self):
+        cfg = json.loads((ROOT / 'configs/teacher_entrance.json').read_text())
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        plan = json.loads((ROOT / 'configs/pilot_plan.json').read_text())
+        self.guard.validate_pilot(plan, cfg, manifest)
+        for value in ('0'*64, 'f'*64):
+            tampered = copy.deepcopy(plan)
+            tampered['geometry_sha256'] = value
+            with self.assertRaisesRegex(ValueError, 'geometry'):
+                self.guard.validate_pilot(tampered, cfg, manifest)
+        for field, value in [('initial_checkpoint', 'wrong/model.pt'),
+                             ('checkpoint_sha256', 'f'*64), ('seed', 2028)]:
+            tampered = copy.deepcopy(plan)
+            tampered[field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'checkpoint|seed'):
+                self.guard.validate_pilot(tampered, cfg, manifest)
+            tampered = copy.deepcopy(plan)
+            tampered['arms'][0][field if field != 'checkpoint_sha256' else 'initial_checkpoint'] = value
+            with self.subTest(arm_field=field), self.assertRaises(ValueError):
+                self.guard.validate_pilot(tampered, cfg, manifest)
+
+    def test_preflight_lock_open_does_not_truncate_contended_lock(self):
+        script = (ROOT / 'scripts/verify_and_train.sh').read_text()
+        self.assertIn('exec 9>>"$workspace/reports/v7_sim.lock"', script)
+        self.assertNotIn('exec 9>"$workspace/reports/v7_sim.lock"', script)
+        with tempfile.TemporaryDirectory() as temp:
+            lock = Path(temp) / 'v7_sim.lock'
+            lock.write_bytes(b'other writer owns this lock\n')
+            # Same nontruncating shell open, followed by a refused lock acquisition.
+            blocked = subprocess.run(['bash', '-c', 'exec 9>>"$1"; exit 86', 'bash', str(lock)],
+                                     capture_output=True, text=True)
+            self.assertEqual(blocked.returncode, 86)
+            self.assertEqual(lock.read_bytes(), b'other writer owns this lock\n')
 
     def test_mock_failure_restores_existing_and_removes_new_file(self):
         script = ROOT / 'scripts/verify_and_train.sh'

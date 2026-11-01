@@ -150,8 +150,7 @@ def require_strict_gate_report(report_path: Path | None, trace_path: Path, count
         raise SystemExit("strict gate trace missing, duplicate or incomplete")
     for row in trace:
         slot = by_env[str(row["env_id"])]
-        if any(slot.get(flag) != int(row[flag])
-               for flag in ("success", "collision", "out_of_bounds", "fell_into_gap")):
+        if any(slot.get(flag) != int(row[flag]) for flag in terminal_flags):
             raise SystemExit("strict gate report/trace terminal mismatch")
     rates = {f"{flag}_rate": sum(row[flag] for row in trace) / count for flag in terminal_flags}
     rates["completion_rate"] = sum(

@@ -154,7 +154,8 @@ class FirstEpisodeTests(unittest.TestCase):
                       'completion_rate': 1 / 3, 'success_rate': 1 / 3, 'fallen_rate': 1 / 3,
                       'collision_rate': 0, 'out_of_bounds_rate': 0, 'fell_into_gap_rate': 1 / 3,
                       'environments': {str(i): {'episodes': 1, 'success': int(row['success']),
-                                               'collision': 0, 'out_of_bounds': 0,
+                                               'collision': 0, 'fallen': int(row['fallen']),
+                                               'out_of_bounds': 0,
                                                'fell_into_gap': int(row['fell_into_gap'])}
                                        for i, row in enumerate(rows)}}
 

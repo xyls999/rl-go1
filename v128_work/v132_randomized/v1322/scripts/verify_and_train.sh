@@ -69,6 +69,6 @@ fi
 command -v flock >/dev/null || { echo 'PREFLIGHT_BLOCKED: exclusive flock unavailable' >&2; exit 86; }
 workspace=/config/Desktop/sim
 [[ -d "$workspace/reports" ]] || { echo 'PREFLIGHT_BLOCKED: remote workspace not mounted' >&2; exit 86; }
-exec 9>"$workspace/reports/v7_sim.lock"
+exec 9>>"$workspace/reports/v7_sim.lock"
 flock -n 9 || { echo 'PREFLIGHT_BLOCKED: simulator lock busy' >&2; exit 86; }
 /root/env_isaaclab/bin/python "$root/scripts/preflight_v1322.py"
