@@ -105,7 +105,8 @@ else
 fi
 command -v flock >/dev/null || { echo 'PREFLIGHT_BLOCKED: exclusive flock unavailable' >&2; exit 86; }
 workspace=/config/Desktop/sim
-[[ -d "$workspace/reports" ]] || { echo 'PREFLIGHT_BLOCKED: remote workspace not mounted' >&2; exit 86; }
+[[ -d "$workspace/reports" && ! -L "$workspace/reports" ]] || { echo 'PREFLIGHT_BLOCKED: remote reports directory missing or symlinked' >&2; exit 86; }
+[[ -f "$workspace/reports/v7_sim.lock" && ! -L "$workspace/reports/v7_sim.lock" ]] || { echo 'PREFLIGHT_BLOCKED: preexisting regular simulator lock required' >&2; exit 86; }
 exec 9>>"$workspace/reports/v7_sim.lock"
 flock -n 9 || { echo 'PREFLIGHT_BLOCKED: simulator lock busy' >&2; exit 86; }
 if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke ]]; then

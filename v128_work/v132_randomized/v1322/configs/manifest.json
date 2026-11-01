@@ -1,6 +1,6 @@
 {
   "baseline": {
-    "cli.py": null,
+    "cli.py": "e7136aa719e19821d153788d3c909747d55dcb97990205a5b2ec67a39232d1ed",
     "config.py": "6d52c2b8ce82930503375453bf7f4dd864961a8832c30f4f7e86672f5a1f602c",
     "entrance_support_v1322.py": null,
     "gap_score_v1321.py": null,
@@ -14,7 +14,7 @@
     "checkpoint_sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450",
     "holdout_seed": null,
     "initial_checkpoint": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
-    "remote_attestation_sha256": null,
+    "remote_attestation_sha256": "7ecc14f0dc8636ea2cfdebadf7bdb82181f1aab39b124ac943cfc841cb6017fc",
     "required_idle_gpu_mib_max": 256,
     "run_id": "go1-v1322-real-entrance-s01-p1-d1",
     "seed_audit_sha256": null,
@@ -38,8 +38,7 @@
     "train_seed": 42
   },
   "pending": [
-    "read-only remote live SHA for CLI and optional helpers",
-    "read-only remote GPU/process/lock preflight",
+    "recheck remote SHA/GPU/process/lock immediately before every real overlay; static receipt is not a live authorization",
     "read-only verified unused final seed and audit SHA",
     "full tests, PhysX, diagnosis, A/B pilot, final strict gate"
   ],
@@ -109,7 +108,7 @@
       "name": "landing_stability_v131.py"
     }
   ],
-  "status": "production test/smoke code only; model_299 SHA attested read-only; CLI hash and remote test overlays require read-only audit before run; no training/final gate implementation",
+  "status": "test/smoke preflight pinned to read-only remote audit; production overlay requires fresh live recheck; final seed/train/gate pending",
   "test_overlays": [
     {
       "candidate": "v128_work/v132_randomized/tests/test_v9_gap_geometry_v132_overlay.py",

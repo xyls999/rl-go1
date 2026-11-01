@@ -154,6 +154,8 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
     require(digest(root / 'provenance/v1321_manifest.json') == provenance['v1321_manifest_sha256']
             and digest(root / 'provenance/v1321_teacher_entrance.json') == provenance['v1321_config_sha256'],
             'V132.1 provenance drift')
+    require(digest(root / 'provenance/remote_live_audit_v1322.txt') ==
+            manifest['execution']['remote_attestation_sha256'], 'read-only remote audit drift')
     require(digest(root / 'configs/rewards_stage1_gaps_v131_landing_stability.toml') ==
             manifest['reward_config']['sha256'], 'reward TOML hash drift')
     seen = set()

@@ -20,6 +20,23 @@ class PreparationTests(unittest.TestCase):
         cls.guard = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.guard)
 
+    def test_remote_live_audit_pins_baseline_and_receipt(self):
+        manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        receipt = ROOT / 'provenance/remote_live_audit_v1322.txt'
+        audit = receipt.read_text(encoding='utf-8')
+        self.assertIn('UTC_2026-', audit)
+        self.assertEqual(self.guard.digest(receipt),
+                         manifest['execution']['remote_attestation_sha256'])
+        self.assertIn(manifest['baseline']['cli.py'] + '  source/go1_hier_sim/go1_hier_sim/cli.py', audit)
+        for row in manifest['test_overlays']:
+            self.assertIn(row['baseline_sha256'] + '  ' + row['live'], audit)
+        for name in ('strict_gate_v1322.py', 'entrance_support_v1322.py',
+                     'gap_score_v1321.py', 'landing_stability_v131.py'):
+            self.assertIn('ABSENT ' + next(row['live'] for row in manifest['sources']
+                                           if row['name'] == name), audit)
+        self.assertIn('LOCK_PRESENT mode=664 owner=abc bytes=0', audit)
+        self.assertIn('V1322_REMOTE_ABSENT', audit)
+
     def test_pinned_sources_and_immutable_provenance(self):
         manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
         for row in manifest['sources']:
@@ -215,6 +232,37 @@ class PreparationTests(unittest.TestCase):
             with self.subTest(arm_field=field), self.assertRaises(ValueError):
                 self.guard.validate_pilot(tampered, cfg, manifest)
 
+    def test_preflight_requires_preexisting_regular_lock_before_open(self):
+        script = (ROOT / 'scripts/verify_and_train.sh').read_text()
+        lock_open = script.index('exec 9>>"$workspace/reports/v7_sim.lock"')
+        self.assertIn('[[ -f "$workspace/reports/v7_sim.lock" && ! -L "$workspace/reports/v7_sim.lock" ]]',
+                      script[:lock_open])
+        with tempfile.TemporaryDirectory() as temp:
+            reports = Path(temp) / 'reports'
+            reports.mkdir()
+            lock = reports / 'v7_sim.lock'
+            target = Path(temp) / 'target'
+            target.write_text('original')
+            for kind in ('absent', 'symlink'):
+                if kind == 'symlink':
+                    lock.symlink_to(target)
+                command = ('workspace="$1"; '
+                           '[[ -f "$workspace/reports/v7_sim.lock" && '
+                           '! -L "$workspace/reports/v7_sim.lock" ]] || exit 86; '
+                           'exec 9>>"$workspace/reports/v7_sim.lock"')
+                blocked = subprocess.run(['bash', '-c', command, 'bash', temp],
+                                         capture_output=True, text=True)
+                self.assertEqual(blocked.returncode, 86, kind)
+                self.assertEqual(lock.exists(), kind == 'symlink')
+                self.assertEqual(target.read_text(), 'original')
+                if kind == 'symlink':
+                    lock.unlink()
+            lock.write_bytes(b'keep')
+            opened = subprocess.run(['bash', '-c', command, 'bash', temp],
+                                    capture_output=True, text=True)
+            self.assertEqual(opened.returncode, 0)
+            self.assertEqual(lock.read_bytes(), b'keep')
+
     def test_preflight_lock_open_does_not_truncate_contended_lock(self):
         script = (ROOT / 'scripts/verify_and_train.sh').read_text()
         self.assertIn('exec 9>>"$workspace/reports/v7_sim.lock"', script)
@@ -321,6 +369,11 @@ class PreparationTests(unittest.TestCase):
                     shutil.copyfile(root / row['candidate'], live)
                     manifest['baseline'][row['name']] = self.guard.digest(live)
             self.guard.validate_components(workspace, root, manifest, cfg, old, production=False)
+            original_audit = manifest['execution']['remote_attestation_sha256']
+            manifest['execution']['remote_attestation_sha256'] = '0' * 64
+            with self.assertRaisesRegex(ValueError, 'read-only remote audit drift'):
+                self.guard.validate_components(workspace, root, manifest, cfg, old, production=False)
+            manifest['execution']['remote_attestation_sha256'] = original_audit
             (workspace / cfg['state']).parent.mkdir(parents=True)
             (workspace / cfg['state']).write_text('occupied')
             with self.assertRaisesRegex(ValueError, 'output path already exists'):
