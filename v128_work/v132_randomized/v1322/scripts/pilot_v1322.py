@@ -194,7 +194,10 @@ def summarize(report: dict, trace: list[dict], arm: str, count: int) -> dict:
     require(arm in ARMS and count == 64 and isinstance(trace, list), 'pilot evaluation shape invalid')
     expected = {str(index) for index in range(count)}
     environments = report.get('environments', {})
-    require(set(environments) == expected and report.get('episodes') == len(trace) and
+    require(isinstance(environments, dict) and set(environments) == expected and
+            type(report.get('episodes')) is int and report['episodes'] == count and
+            all(isinstance(entry, dict) and type(entry.get('episodes')) is int and
+                entry['episodes'] >= 1 for entry in environments.values()) and
             sum(entry['episodes'] for entry in environments.values()) == len(trace),
             'pilot report/trace episode mismatch')
     first = {}

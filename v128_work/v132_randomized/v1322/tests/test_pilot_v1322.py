@@ -127,6 +127,42 @@ class PilotTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.pilot.summarize(report, rows, 'treatment', 64)
 
+    def test_first_episode_summary_ignores_fast_repeat_before_slot_coverage(self):
+        first = [{'env_id': n, 'episode_index': 0, 'success': n == 63,
+                  'fallen': n != 63, 'collision': False, 'out_of_bounds': False,
+                  'fell_into_gap': False, 'required_gap_count': 2,
+                  'credited_gap_count': 2 if n == 63 else 0,
+                  'course_x': 32.0 if n == 63 else 3.0,
+                  'reward_events': {'supported_short': 1, 'safe_segment': 2 if n == 63 else 0}}
+                 for n in range(64)]
+        repeated = {**first[0], 'episode_index': 1, 'success': True, 'fallen': False,
+                    'credited_gap_count': 2, 'course_x': 32.0,
+                    'reward_events': {'supported_short': 99, 'safe_segment': 2}}
+        trace = first[:63] + [repeated, first[63]]
+        report = {'episodes': 64, 'environments': {
+            str(n): {'episodes': 2 if n == 0 else 1} for n in range(64)}}
+        result = self.pilot.summarize(report, trace, 'treatment', 64)
+        self.assertEqual(result['reported_completed_episodes'], 65)
+        self.assertEqual(result['first_episode_count'], 64)
+        self.assertEqual(result['first_episode_completion_rate'], 1 / 64)
+        self.assertEqual(result['supported_short_events'], 64)
+        self.assertEqual(result['safe_segment_events'], 2)
+        self.assertEqual(result['success_rate'], 1 / 64)
+
+        # Every repeated trace must still have a contiguous per-slot index and
+        # exactly match the report's actual per-slot completed-episode count.
+        invalid = [({**report, 'episodes': 65}, trace),
+                   (report, trace[:-1]),
+                   (report, trace[:63] + [{**repeated, 'episode_index': 0}, first[63]]),
+                   (report, trace[:63] + [{**repeated, 'env_id': 1}, first[63]]),
+                   ({'episodes': 64, 'environments': {
+                       str(n): {'episodes': 1} for n in range(64)}}, trace)]
+        for bad_report, bad_trace in invalid:
+            with self.subTest(report_episodes=bad_report['episodes'],
+                              trace_length=len(bad_trace), repeated=bad_trace[63]):
+                with self.assertRaises(ValueError):
+                    self.pilot.summarize(bad_report, bad_trace, 'treatment', 64)
+
     def test_incomplete_training_checkpoint_is_not_evaluated(self):
         with tempfile.TemporaryDirectory() as directory:
             checkpoint_dir = Path(directory)
