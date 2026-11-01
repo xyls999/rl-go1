@@ -20,6 +20,7 @@ from preflight_v1322 import (digest, gpu_usage_mib, require, validate_components
                             validate_gate)
 from diagnostic_v1322 import (DEV_SEED, command as diagnosis_command,
                               validate_diagnosis_inputs, validate_plan)
+import pilot_v1322
 
 FAMILIES = (('entrance', 'combined_part_entrance'), ('junction', 'combined_junction'),
             ('long', 'gaps_long'), ('tire', 'tire_field'))
@@ -266,9 +267,102 @@ def run_diagnosis(workspace: Path, root: Path, manifest: dict, config: dict,
             'episodes': 512, 'final_holdout': False, **lineage}
 
 
+def run_pilot(workspace: Path, root: Path, manifest: dict, config: dict, spec: dict,
+              env: dict[str, str], paths: dict, inputs: dict) -> dict:
+    """Two serial arms; missing terminal evidence aborts before any receipt."""
+    from pilot_v1322 import (ARMS, eval_command, json_bytes, latest_checkpoint,
+                             summarize, train_command)
+
+    with paths['plan'].open('xb') as stream:
+        stream.write(json_bytes(inputs['plan']))
+    with paths['control_toml'].open('xb') as stream:
+        stream.write(inputs['control_toml'])
+    require(digest(paths['plan']) == spec['plan_sha256'] and
+            digest(paths['control_toml']) == spec['control_toml_sha256'],
+            'pilot generated plan/reward SHA mismatch')
+    measured = {}
+    for arm in ARMS:
+        ensure_idle()
+        run_id = paths[f'{arm}_run_id']
+        reward_path = (paths['control_toml'] if arm == 'control' else
+                       root / manifest['reward_config']['path'])
+        require(digest(reward_path) == spec[f'{arm}_toml_sha256'],
+                'pilot reward changed before ' + arm)
+        environment = dict(env, GO1_RUN_ID=run_id, GO1_TASK_PLAN=str(paths['plan']),
+                           GO1_REWARD_CONFIG_PATH=str(reward_path))
+        run_logged(train_command(workspace, config, spec, arm, paths['plan'], inputs['checkpoint']),
+                   paths[f'{arm}_train_log'], environment, workspace)
+        stage_path = paths[f'{arm}_stage_report']
+        require(stage_path.is_file() and not stage_path.is_symlink(),
+                'pilot stage report absent: ' + arm)
+        stage = json.loads(stage_path.read_text(encoding='utf-8'))
+        require(stage.get('run') == run_id and stage.get('iterations') == 30 and
+                stage.get('task_plan') == str(paths['plan']) and
+                type(stage.get('episodes')) is int and stage['episodes'] > 0 and
+                isinstance(stage.get('environments'), dict),
+                'pilot training stage telemetry absent: ' + arm)
+        checkpoint = latest_checkpoint(paths[f'{arm}_checkpoint_dir'])
+        checkpoint_sha = digest(checkpoint)
+        ensure_idle()
+        eval_environment = dict(environment, GO1_RUN_ID=paths[f'{arm}_eval_run_id'])
+        run_logged(eval_command(workspace, config, spec, arm, checkpoint, paths[f'{arm}_trace']),
+                   paths[f'{arm}_eval_log'], eval_environment, workspace)
+        eval_path = paths[f'{arm}_eval_report']
+        trace_path = paths[f'{arm}_trace']
+        require(eval_path.is_file() and trace_path.is_file(),
+                'pilot matched evaluation report/trace absent: ' + arm)
+        report = json.loads(eval_path.read_text(encoding='utf-8'))
+        require(report.get('seed') == 2028 and report.get('checkpoint_sha256') == checkpoint_sha
+                and report.get('stage') == 'stage1' and report.get('terrain') == 'lp_acrl',
+                'pilot matched evaluation provenance mismatch: ' + arm)
+        rows = [json.loads(row) for row in trace_path.read_text(encoding='utf-8').splitlines()]
+        first = summarize(report, rows, arm, spec['num_envs'])
+        measured[arm] = {'run_id': run_id, 'supported_short_weight':
+                         0.0 if arm == 'control' else 0.8,
+                         'reward_toml_sha256': digest(reward_path),
+                         'checkpoint_path': str(checkpoint),
+                         'checkpoint_sha256': checkpoint_sha,
+                         'stage_report_sha256': digest(stage_path),
+                         'training_log_sha256': digest(paths[f'{arm}_train_log']),
+                         'evaluation_log_sha256': digest(paths[f'{arm}_eval_log']),
+                         'evaluation_report_sha256': digest(eval_path),
+                         'evaluation_trace_sha256': digest(trace_path),
+                         'training_episodes': stage['episodes'],
+                         'training_completion_rate_repeated_episodes_diagnostic_only':
+                             stage.get('completion_rate'),
+                         'evaluation_first_episode': first}
+    require(measured['treatment']['evaluation_first_episode']['supported_short_events'] > 0,
+            'pilot supported_short never activated on treatment; no decision receipt')
+    require(digest(paths['plan']) == spec['plan_sha256'] and
+            digest(paths['control_toml']) == spec['control_toml_sha256'] and
+            digest(inputs['checkpoint']) == spec['checkpoint_sha256'] and
+            digest(root / manifest['reward_config']['path']) == spec['treatment_toml_sha256'],
+            'pilot pinned inputs changed during arms')
+    control_first = measured['control']['evaluation_first_episode']
+    treatment_first = measured['treatment']['evaluation_first_episode']
+    safety_regression = any(treatment_first[key] > control_first[key]
+                            for key in ('collision_rate', 'fallen_rate', 'fell_into_gap_rate',
+                                        'out_of_bounds_rate'))
+    return {'arms': measured,
+            'pilot_completion_delta': (treatment_first['first_episode_completion_rate'] -
+                                       control_first['first_episode_completion_rate']),
+            'safety_regression_observed': safety_regression,
+            'automatic_full_training_authorized': False,
+            'plan_sha256': digest(paths['plan']),
+            'control_toml_sha256': digest(paths['control_toml']),
+            'treatment_toml_sha256': spec['treatment_toml_sha256'],
+            'initial_checkpoint_sha256': spec['checkpoint_sha256'],
+            'test_receipt_sha256': inputs['test_receipt_sha256'],
+            'smoke_receipt_sha256': inputs['smoke_receipt_sha256'],
+            'diagnosis_receipt_sha256': inputs['diagnosis_receipt_sha256'],
+            'final_holdout': False, 'full_training_started': False}
+
+
 def run(mode: str, root: Path, workspace: Path) -> None:
-    require(mode in ('test', 'smoke', 'diagnose'), 'training and gate not implemented in this runner')
-    expected_auth = 'dev-diagnose-only' if mode == 'diagnose' else 'test-smoke-only'
+    require(mode in ('test', 'smoke', 'diagnose', 'pilot'),
+            'full teacher training and final gate not implemented in this runner')
+    expected_auth = ('paired-pilot-only' if mode == 'pilot' else
+                     'dev-diagnose-only' if mode == 'diagnose' else 'test-smoke-only')
     require(os.environ.get('V1322_RUN_AUTHORIZED') == expected_auth, 'explicit authorization absent')
     # fd 9 must be inherited from the shell after nontruncating flock acquisition;
     # refuse direct Python invocation that would bypass the external simulator lock.
@@ -292,6 +386,12 @@ def run(mode: str, root: Path, workspace: Path) -> None:
     names = attempt_artifacts(manifest['execution']['test_attempt'])
     diagnosis_paths, lineage = (validate_diagnosis_inputs(root, workspace, manifest, config)
                                 if mode == 'diagnose' else (None, None))
+    pilot_spec = (json.loads((root / 'configs/pilot_execution.json').read_text(encoding='utf-8'))
+                  if mode == 'pilot' else None)
+    pilot_paths, pilot_inputs = (pilot_v1322.validate_inputs(root, workspace, manifest,
+                                                            config, pilot_spec)
+                                 if mode == 'pilot' else (None, None))
+    pilot_spec_sha = (digest(root / 'configs/pilot_execution.json') if mode == 'pilot' else None)
     if mode == 'smoke':
         receipt = root / 'reports' / names['test_receipt']
         require(receipt.is_file(), 'full project test receipt absent')
@@ -327,18 +427,27 @@ def run(mode: str, root: Path, workspace: Path) -> None:
                 result = run_tests(workspace, root, manifest, environment)
             elif mode == 'smoke':
                 result = run_smoke(workspace, root, manifest, environment)
-            else:
+            elif mode == 'diagnose':
                 result = run_diagnosis(workspace, root, manifest, config,
                                        environment, diagnosis_paths, lineage)
+            else:
+                result = run_pilot(workspace, root, manifest, config,
+                                   environment, pilot_paths, pilot_inputs)
         require(overlay.restored, 'overlay not restored')
         require(digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'],
                 'reward TOML changed during run')
-        receipt = (diagnosis_paths['receipt'] if mode == 'diagnose' else
+        receipt = (pilot_paths['receipt'] if mode == 'pilot' else
+                   diagnosis_paths['receipt'] if mode == 'diagnose' else
                    root / 'reports' / names['test_receipt' if mode == 'test' else 'smoke_receipt'])
+        if mode == 'pilot':
+            require(digest(root / 'configs/pilot_execution.json') == pilot_spec_sha,
+                    'pilot specification changed during execution')
         with receipt.open('x', encoding='utf-8') as stream:
-            json.dump({'status': 'diagnostic' if mode == 'diagnose' else 'passed',
+            json.dump({'status': 'pilot-diagnostic-only' if mode == 'pilot' else
+                       'diagnostic' if mode == 'diagnose' else 'passed',
                        'mode': mode, 'restored': True,
                        'manifest_sha256': digest(root / 'configs/manifest.json'),
+                       'pilot_spec_sha256': pilot_spec_sha if mode == 'pilot' else None,
                        'reward_sha256': manifest['reward_config']['sha256'], **result}, stream)
             stream.write('\n')
     finally:

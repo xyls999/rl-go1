@@ -1,0 +1,23 @@
+{
+  "purpose": "bounded paired entrance reward pilot; never final gate",
+  "frozen_manifest_sha256": "32ba96bf58efa9fc79f78febfd186c35062fbf1b89e9787209909f1e87f3da8f",
+  "test_receipt_sha256": "58806642ff5f1341beba75ba6ec2fcfc496a163645d562bd1aca709e8a738255",
+  "smoke_receipt_sha256": "237c3c93e1d6c549357e0e44bec179ddb4c7e1f64a864914e503398221b88a85",
+  "diagnosis_receipt_sha256": "eec7976bf2b42a73d1e7610385accd9835f292be171e40a6706da2058ac9d198",
+  "source_plan_sha256": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b",
+  "plan_sha256": "d74227ba1c458cdbd4fbdb34d8e1012c2848304d59c212eae8ccb5ba2488b290",
+  "checkpoint_sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450",
+  "control_toml_sha256": "c74a02a2e8d675cd0647f06ab0957ef72b43c3828acb232b562f63aaa1d0e116",
+  "treatment_toml_sha256": "cfde98e63504329ee1e3d13e0f19adf9207700a8ef1288703f824190680358ca",
+  "pilot_id": "go1-v1322-supportedshort-pilot-a01",
+  "run_ids": {
+    "control": "go1-v1322-supportedshort-pilot-a01-control",
+    "treatment": "go1-v1322-supportedshort-pilot-a01-treatment"
+  },
+  "num_envs": 64,
+  "iterations": 30,
+  "critic_warmup_iterations": 5,
+  "train_seed": 42,
+  "development_evaluation_seed": 2028,
+  "final_holdout": false
+}
