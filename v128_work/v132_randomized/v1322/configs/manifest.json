@@ -1,0 +1,108 @@
+{
+  "baseline": {
+    "cli.py": null,
+    "config.py": "6d52c2b8ce82930503375453bf7f4dd864961a8832c30f4f7e86672f5a1f602c",
+    "entrance_support_v1322.py": null,
+    "gap_score_v1321.py": null,
+    "geometry.py": "f60a374596427cc61cad38b6c2e5a1da77f4ff7889906e984c944ad6f736e6b1",
+    "runtime.py": "0801936f403beb2a34f51a83525931fa9c23c7e5622d907dc1d92dbbc39f5d92",
+    "strict_gate_v1322.py": null
+  },
+  "configuration_sha256": "c03186fde1b0e5a612334d4d1130afb7cd790e3e5de43cf6251536c158b40dc5",
+  "execution": {
+    "checkpoint_sha256": null,
+    "holdout_seed": null,
+    "initial_checkpoint": null,
+    "remote_attestation_sha256": null,
+    "required_idle_gpu_mib_max": 256,
+    "run_id": "go1-v1322-real-entrance-s01-p1-d1",
+    "seed_audit_sha256": null,
+    "strict_gate_envs": 512,
+    "train_and_gate_env": {
+      "GO1_FALL_RELATIVE": "1",
+      "GO1_POLICY_VARIANT": "map_attn_v3",
+      "GO1_PPO_CONFIG_PATH": "configs/ppo_gaps_long.json",
+      "GO1_PRIVILEGED_ACTOR": "1",
+      "GO1_REWARD_CONFIG_PATH": "v128_work/v132_randomized/v1322/configs/rewards_stage1_gaps_v131_landing_stability.toml",
+      "GO1_SOFT_RESPAWN": "1",
+      "GO1_V128_FILTER_OBS": "1",
+      "GO1_V19_MIN_WIDTH": "0.05",
+      "GO1_V19_PRELAUNCH_REWARD": "1",
+      "GO1_V19_PRELAUNCH_SCALE": "4",
+      "GO1_V29_FILTER_OBS": "0",
+      "GO1_V8_LONG_GAP_THRESHOLD": "0.05",
+      "GO1_V8_TERRAIN_CONTROL": "1"
+    },
+    "train_envs": 512,
+    "train_seed": 42
+  },
+  "pending": [
+    "read-only remote live SHA for CLI and optional helpers",
+    "read-only remote GPU/process/lock preflight",
+    "owner-approved checkpoint and checkpoint SHA",
+    "read-only verified unused final seed and audit SHA",
+    "full tests, PhysX, diagnosis, A/B pilot, final strict gate"
+  ],
+  "provenance": {
+    "v1321_config_sha256": "b187513b728651dcbc78bfbe91aae07d35ce184b243c9debf85c57fc2bfd2a09",
+    "v1321_failed_teacher_checkpoint": {
+      "path": "checkpoints/stage1/go1-v1321-real-entrance-s01-p1-d1/model_649.pt",
+      "sha256": "1740e37faec1d9f1f50020faf56690f30ef36712899e532c3db6ec4eecf95e2f"
+    },
+    "v1321_manifest_sha256": "4c67defb31f6c2f0be7994779502108d547b12a198a492cc9221188de227fc55",
+    "v1321_original_checkpoint": {
+      "path": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
+      "sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450"
+    }
+  },
+  "reward_config": {
+    "path": "configs/rewards_stage1_gaps_v131_landing_stability.toml",
+    "sha256": "cfde98e63504329ee1e3d13e0f19adf9207700a8ef1288703f824190680358ca"
+  },
+  "sources": [
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/cli.py",
+      "candidate_sha256": "72198f718114712be46120884c28ce626e714290d9efd7407181e241ebf9b473",
+      "live": "source/go1_hier_sim/go1_hier_sim/cli.py",
+      "name": "cli.py"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/runtime.py",
+      "candidate_sha256": "ebbd026f48e1d484f79bf21d25bd8f7875ad39f390917801941ad630371b2d38",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/runtime.py",
+      "name": "runtime.py"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/geometry.py",
+      "candidate_sha256": "6308300ee3df73b93f72ab852838f866971f07efeca715cca796938e0d925cb7",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/geometry.py",
+      "name": "geometry.py"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/config.py",
+      "candidate_sha256": "903bf91a96a79518062ab3f2689ed939b9b7c2d3b478e2a9674ed259486cf4d8",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/config.py",
+      "name": "config.py"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py",
+      "candidate_sha256": "0ae1b6a0b35faf00111535add573821759dc6149a2e2ee166d3f187a6e8d68a5",
+      "live": "source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py",
+      "name": "strict_gate_v1322.py"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py",
+      "candidate_sha256": "004b0074ac1972cf634c9304e288a6c318282829a570029c2aa0c243704aab3e",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py",
+      "name": "entrance_support_v1322.py"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py",
+      "candidate_sha256": "e00680ab39e5c1f0ee68a92fad0da0b383d85d04274c5fe0448f6c88d1003001",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py",
+      "name": "gap_score_v1321.py"
+    }
+  ],
+  "status": "preparation-only; no execution until reviewed remote attestations and owner checkpoint choice",
+  "version": 1
+}
