@@ -539,9 +539,12 @@ class PreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'final holdout'):
                 self.guard.validate_components(workspace, ROOT, manifest, cfg, old,
                                                production=True, mode='final')
-            with self.assertRaisesRegex(ValueError, 'test receipt'):
-                self.guard.validate_read_only_preflight(workspace, ROOT, manifest, cfg, old,
-                                                        mode='smoke', gpu_mib=[0]*4)
+            with patch.object(self.guard, 'validate_test_receipt',
+                              side_effect=ValueError('test receipt missing')) as receipt_check:
+                with self.assertRaisesRegex(ValueError, 'test receipt'):
+                    self.guard.validate_read_only_preflight(workspace, ROOT, manifest, cfg, old,
+                                                            mode='smoke', gpu_mib=[0]*4)
+                receipt_check.assert_called_once_with(ROOT, manifest)
             with self.assertRaisesRegex(ValueError, 'GPU'):
                 self.guard.validate_read_only_preflight(workspace, ROOT, manifest, cfg, old,
                                                         mode='test', gpu_mib=[0, 0, 257, 0])

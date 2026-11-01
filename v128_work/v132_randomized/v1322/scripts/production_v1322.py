@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guarded, explicit V132.2 test/PhysX modes; never starts training.
+"""Guarded V132.2 test, PhysX and old-checkpoint development diagnosis modes.
 
 The caller owns the v7_sim.lock for this entire process. A mode runs only when
 all live files have freshly matched their pinned baseline hashes.
@@ -17,7 +17,9 @@ import sys
 import tempfile
 
 from preflight_v1322 import (digest, gpu_usage_mib, require, validate_components,
-                            validate_mode_outputs)
+                            validate_gate)
+from diagnostic_v1322 import (DEV_SEED, command as diagnosis_command,
+                              validate_diagnosis_inputs, validate_plan)
 
 FAMILIES = (('entrance', 'combined_part_entrance'), ('junction', 'combined_junction'),
             ('long', 'gaps_long'), ('tire', 'tire_field'))
@@ -239,9 +241,35 @@ def run_smoke(workspace: Path, root: Path, manifest: dict, env: dict[str, str]) 
     return {'families': passed}
 
 
+def run_diagnosis(workspace: Path, root: Path, manifest: dict, config: dict,
+                  env: dict[str, str], paths: dict, lineage: dict) -> dict:
+    """Score an old checkpoint on development seed only; never decide a gate."""
+    environment = dict(env, GO1_TASK_PLAN=str(paths['plan']),
+                       GO1_RUN_ID=f"gate-{paths['run_id']}")
+    run_logged(diagnosis_command(workspace, config, paths), paths['log'], environment, workspace)
+    require(paths['report'].is_file() and paths['trace'].is_file(),
+            'development report or trace missing after evaluation')
+    # Use the same strict report/trace/checkpoint validator as the eventual gate.
+    from run_teacher_v1322 import require_strict_gate_report
+    report = require_strict_gate_report(paths['report'], paths['trace'], 512,
+                                        paths['checkpoint'], DEV_SEED, paths['run_id'])
+    trace = [json.loads(row) for row in paths['trace'].read_text(encoding='utf-8').splitlines()]
+    validate_gate(report, trace, 512, digest(paths['checkpoint']))
+    require(validate_plan(paths, config) == lineage['plan_sha256'] and
+            digest(paths['checkpoint']) == manifest['provenance']['v1321_failed_teacher_checkpoint']['sha256'] and
+            digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'],
+            'development plan/checkpoint/reward changed during evaluation')
+    return {'run_id': paths['run_id'], 'seed': DEV_SEED,
+            'checkpoint_sha256': digest(paths['checkpoint']),
+            'report_sha256': digest(paths['report']), 'trace_sha256': digest(paths['trace']),
+            'log_sha256': digest(paths['log']), 'completion_rate': report['completion_rate'],
+            'episodes': 512, 'final_holdout': False, **lineage}
+
+
 def run(mode: str, root: Path, workspace: Path) -> None:
-    require(mode in ('test', 'smoke'), 'training and gate not implemented in this runner')
-    require(os.environ.get('V1322_RUN_AUTHORIZED') == 'test-smoke-only', 'explicit authorization absent')
+    require(mode in ('test', 'smoke', 'diagnose'), 'training and gate not implemented in this runner')
+    expected_auth = 'dev-diagnose-only' if mode == 'diagnose' else 'test-smoke-only'
+    require(os.environ.get('V1322_RUN_AUTHORIZED') == expected_auth, 'explicit authorization absent')
     # fd 9 must be inherited from the shell after nontruncating flock acquisition;
     # refuse direct Python invocation that would bypass the external simulator lock.
     import fcntl
@@ -262,6 +290,8 @@ def run(mode: str, root: Path, workspace: Path) -> None:
     rows = targets(root, workspace, manifest, mode)
     check_targets(rows, workspace)
     names = attempt_artifacts(manifest['execution']['test_attempt'])
+    diagnosis_paths, lineage = (validate_diagnosis_inputs(root, workspace, manifest, config)
+                                if mode == 'diagnose' else (None, None))
     if mode == 'smoke':
         receipt = root / 'reports' / names['test_receipt']
         require(receipt.is_file(), 'full project test receipt absent')
@@ -293,14 +323,21 @@ def run(mode: str, root: Path, workspace: Path) -> None:
     previous_handlers = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
         with Overlay(rows, workspace) as overlay:
-            result = (run_tests(workspace, root, manifest, environment) if mode == 'test' else
-                      run_smoke(workspace, root, manifest, environment))
+            if mode == 'test':
+                result = run_tests(workspace, root, manifest, environment)
+            elif mode == 'smoke':
+                result = run_smoke(workspace, root, manifest, environment)
+            else:
+                result = run_diagnosis(workspace, root, manifest, config,
+                                       environment, diagnosis_paths, lineage)
         require(overlay.restored, 'overlay not restored')
         require(digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'],
                 'reward TOML changed during run')
-        receipt = root / 'reports' / names['test_receipt' if mode == 'test' else 'smoke_receipt']
+        receipt = (diagnosis_paths['receipt'] if mode == 'diagnose' else
+                   root / 'reports' / names['test_receipt' if mode == 'test' else 'smoke_receipt'])
         with receipt.open('x', encoding='utf-8') as stream:
-            json.dump({'status': 'passed', 'mode': mode, 'restored': True,
+            json.dump({'status': 'diagnostic' if mode == 'diagnose' else 'passed',
+                       'mode': mode, 'restored': True,
                        'manifest_sha256': digest(root / 'configs/manifest.json'),
                        'reward_sha256': manifest['reward_config']['sha256'], **result}, stream)
             stream.write('\n')

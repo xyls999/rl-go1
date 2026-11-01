@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Only explicitly authorized test and four-family PhysX modes can overlay live
-# sources. Training and evaluation modes do not exist in this script.
+# Explicit test, four-family PhysX and old-checkpoint development replay only.
+# Training and final holdout gate do not exist in this script.
 set -Eeuo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 mode="${1:-}"
@@ -92,15 +92,17 @@ if [[ "$mode" == mock-restore || "$mode" == mock-signal ]]; then
   fi
   false # deliberate failure exercises the EXIT trap (never a real run)
 fi
-if [[ "$mode" != preflight && "$mode" != preflight-test && "$mode" != preflight-smoke && "$mode" != test && "$mode" != smoke ]] || [[ "${V1322_MOCK:-}" == 1 ]]; then
+if [[ "$mode" != preflight && "$mode" != preflight-test && "$mode" != preflight-smoke && "$mode" != preflight-diagnose && "$mode" != test && "$mode" != smoke && "$mode" != diagnose ]] || [[ "${V1322_MOCK:-}" == 1 ]]; then
   echo 'BLOCKED: training and final gate are not implemented in this runner' >&2
   exit 85
 fi
-if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke ]]; then
+if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke || "$mode" == preflight-diagnose ]]; then
   [[ "${PREFLIGHT_ONLY:-}" == 1 ]] || { echo 'PREFLIGHT_ONLY=1 required' >&2; exit 85; }
 else
-  [[ "${V1322_RUN_AUTHORIZED:-}" == 'test-smoke-only' && "${PREFLIGHT_ONLY:-0}" != 1 ]] || {
-    echo 'BLOCKED: test/smoke needs explicit authorization' >&2; exit 85;
+  authorization='test-smoke-only'
+  [[ "$mode" != diagnose ]] || authorization='dev-diagnose-only'
+  [[ "${V1322_RUN_AUTHORIZED:-}" == "$authorization" && "${PREFLIGHT_ONLY:-0}" != 1 ]] || {
+    echo "BLOCKED: $mode needs explicit authorization" >&2; exit 85;
   }
 fi
 command -v flock >/dev/null || { echo 'PREFLIGHT_BLOCKED: exclusive flock unavailable' >&2; exit 86; }
@@ -109,7 +111,7 @@ workspace=/config/Desktop/sim
 [[ -f "$workspace/reports/v7_sim.lock" && ! -L "$workspace/reports/v7_sim.lock" ]] || { echo 'PREFLIGHT_BLOCKED: preexisting regular simulator lock required' >&2; exit 86; }
 exec 9>>"$workspace/reports/v7_sim.lock"
 flock -n 9 || { echo 'PREFLIGHT_BLOCKED: simulator lock busy' >&2; exit 86; }
-if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke ]]; then
+if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke || "$mode" == preflight-diagnose ]]; then
   /root/env_isaaclab/bin/python "$root/scripts/preflight_v1322.py" "$mode"
 else
   exec /root/env_isaaclab/bin/python "$root/scripts/production_v1322.py" "$mode"
