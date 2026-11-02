@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Final `combined` mesh, entrance 2–5 real gaps of 0.08–0.24 m, 0.65–1.10 m pads, ≥0.55 m void depth and 1.30–3.00 m roll-in unchanged.
-- Actor 1073 inputs, 12 actions, GRU128; no terrain family, segment boundary or privileged geometry in actor; speed command 0.35–0.8 m/s.
+- Actor 1073 inputs, 12 actions, GRU128; speed command 0.35–0.8 m/s. **User override:** teachers and final student may use the existing simulator-exact terrain feature path (`GO1_PRIVILEGED_ACTOR=1`); train/eval must match. Do not add a terrain-family ID or raw gap-boundary/segment tensors to the actor without a separate design change.
 - No weaker collision, fall, gap-void, stable-touchdown, all-gap-credit or finish criterion; no student distillation, watchdog or automatic p2.
 - New run IDs, new source/config/report/checkpoint paths; never overwrite V132/V132.1 assets or seed-2028 diagnostics. Only one Isaac instance; lock, GPU, SHA and trap restoration before/after overlay.
 - Train/eval use identical reward source, observation mask, disturbance and terrain family. Final holdout is a freshly verified unused seed, 512 unique env IDs, one deterministic episode each, ≥90%; stop queue at first failure.
@@ -105,7 +105,7 @@ eligible = valid & window & (pad_contact.sum(-1) >= 2) & ~failed[:, None]
 # q_* are [N] height/upright/forward-command ratios clamped to [0,1]
 return (eligible * (q_height * q_upright * q_motion)[:, None]).amax(-1)
 ```
-- [ ] **Step 4: Run focused tests green and existing V132.1 gap/tire score tests.** Check 1073/12/GRU128 contract and no actor geometry via existing project tests.
+- [ ] **Step 4: Run focused tests green and existing V132.1 gap/tire score tests.** Check 1073/12/GRU128 contract and that no new raw gap-boundary or family tensors enter the actor; the existing exact-terrain feature path is allowed by the user override.
 - [ ] **Step 5: Commit only Task 2 files** under a scoped V132.2 message.
 
 ### Task 3: Guarded integration and honest diagnosis
