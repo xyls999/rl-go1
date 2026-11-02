@@ -412,7 +412,8 @@ def run_entrance_gate(workspace: Path, root: Path, manifest: dict, config: dict,
     environment = dict(env, GO1_TASK_PLAN=str(paths['plan']), GO1_RUN_ID=f"gate-{spec['gate_run_id']}")
     require(environment['GO1_PRIVILEGED_ACTOR'] == '1' and
             environment['GO1_REWARD_CONFIG_PATH'] ==
-            str(workspace / manifest['reward_config']['path']),
+            str(workspace / manifest['execution']['train_and_gate_env']['GO1_REWARD_CONFIG_PATH']) and
+            digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'],
             'holdout observations/reward differ from training')
     run_logged(gate_entrance_v1322.command(workspace, config, paths, spec), paths['log'],
                environment, workspace)

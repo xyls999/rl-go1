@@ -246,10 +246,13 @@ class EntranceHoldoutTests(unittest.TestCase):
             reward = root / self.manifest['reward_config']['path']
             reward.parent.mkdir(parents=True)
             reward.write_bytes((ROOT / self.manifest['reward_config']['path']).read_bytes())
+            approved_env = self.production.common_environment(workspace, self.manifest)
+            self.assertEqual(approved_env['GO1_REWARD_CONFIG_PATH'], str(reward))
             def run_sim(cmd, log, env, cwd):
                 self.assertEqual(cmd[:2], [str(workspace / 'sim.sh'), 'evaluate'])
                 self.assertEqual(env['GO1_TASK_PLAN'], str(paths['plan']))
                 self.assertEqual(env['GO1_PRIVILEGED_ACTOR'], '1')
+                self.assertEqual(env['GO1_REWARD_CONFIG_PATH'], str(reward))
                 self.assertEqual(env['GO1_RUN_ID'], f"gate-{self.spec['gate_run_id']}")
                 self.assertEqual(cwd, workspace)
                 log.write_text('mock only')
@@ -269,11 +272,21 @@ class EntranceHoldoutTests(unittest.TestCase):
                     patch.object(self.production, 'digest',
                                  side_effect=lambda path: pinned[path] if path in pinned else original_digest(path)):
                 result = self.production.run_entrance_gate(
-                    workspace, root, self.manifest, self.config, self.spec,
-                    {'GO1_PRIVILEGED_ACTOR': '1',
-                     'GO1_REWARD_CONFIG_PATH': str(workspace / self.manifest['reward_config']['path'])},
+                    workspace, root, self.manifest, self.config, self.spec, approved_env,
                     paths, {'train_receipt_sha256': self.gate.TRAIN_RECEIPT_SHA,
                             'seed_audit_sha256': self.gate.AUDIT_SHA})
+                tampered_env = dict(approved_env, GO1_REWARD_CONFIG_PATH=str(workspace / 'wrong.toml'))
+                with self.assertRaisesRegex(ValueError, 'observations/reward differ'):
+                    self.production.run_entrance_gate(
+                        workspace, root, self.manifest, self.config, self.spec, tampered_env,
+                        paths, {'train_receipt_sha256': self.gate.TRAIN_RECEIPT_SHA,
+                                'seed_audit_sha256': self.gate.AUDIT_SHA})
+                reward.write_bytes(reward.read_bytes() + b'\n# tampered\n')
+                with self.assertRaisesRegex(ValueError, 'observations/reward differ'):
+                    self.production.run_entrance_gate(
+                        workspace, root, self.manifest, self.config, self.spec, approved_env,
+                        paths, {'train_receipt_sha256': self.gate.TRAIN_RECEIPT_SHA,
+                                'seed_audit_sha256': self.gate.AUDIT_SHA})
             launched.assert_called_once()
             self.assertFalse(result['gate_passed'])
             self.assertFalse(result['automatic_junction_authorized'])
