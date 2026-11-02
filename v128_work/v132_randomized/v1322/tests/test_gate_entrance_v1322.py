@@ -3,6 +3,7 @@ import ast
 import importlib
 import inspect
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -171,6 +172,55 @@ class EntranceHoldoutTests(unittest.TestCase):
                     with self.subTest(tamper=tamper), self.assertRaises(ValueError):
                         self.gate.validate_result(paths, self.spec)
                     report['environments']['511'] = original
+
+    def test_top_level_gate_dispatch_writes_failure_receipt_after_mock_restore(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            root = workspace / 'v128_work/v132_randomized/v1322'
+            (root / 'configs').mkdir(parents=True)
+            (root / 'provenance').mkdir()
+            (root / 'reports').mkdir()
+            (workspace / 'reports').mkdir()
+            lock = workspace / 'reports/v7_sim.lock'
+            lock.write_bytes(b'lock stub')
+            for filename in ('manifest.json', 'teacher_entrance.json', 'gate_entrance_execution.json'):
+                (root / 'configs' / filename).write_bytes((ROOT / 'configs' / filename).read_bytes())
+            (root / 'provenance/v1321_teacher_entrance.json').write_bytes(
+                (ROOT / 'provenance/v1321_teacher_entrance.json').read_bytes())
+            reward = root / self.manifest['reward_config']['path']
+            reward.parent.mkdir(parents=True, exist_ok=True)
+            reward.write_bytes((ROOT / self.manifest['reward_config']['path']).read_bytes())
+            paths = self.gate.artifacts(workspace, root, self.spec)
+            class RestoredOverlay:
+                restored = True
+                def __enter__(self):
+                    return self
+                def __exit__(self, *args):
+                    return False
+            measured = {'gate_passed': False, 'first_episode_count': 512,
+                        'first_episode_successes': 460, 'first_episode_completion_rate': 460 / 512,
+                        'final_holdout': True, 'automatic_junction_authorized': False}
+            fcntl = types.SimpleNamespace(LOCK_EX=1, LOCK_NB=2, flock=lambda *_: None)
+            with patch.dict(sys.modules, {'fcntl': fcntl}), \
+                    patch.dict(os.environ, {'V1322_RUN_AUTHORIZED': 'entrance-final-gate-only'}), \
+                    patch.object(self.production.os, 'fstat', return_value=types.SimpleNamespace(
+                        st_ino=lock.stat().st_ino)), \
+                    patch.object(self.production, 'validate_components'), \
+                    patch.object(self.production, 'ensure_idle'), \
+                    patch.object(self.production, 'targets', return_value=[]), \
+                    patch.object(self.production, 'check_targets'), \
+                    patch.object(self.production, 'Overlay', return_value=RestoredOverlay()), \
+                    patch.object(self.gate, 'validate_inputs', return_value=(paths, {})), \
+                    patch.object(self.production, 'run_entrance_gate', return_value=measured) as dispatched:
+                self.production.run('gate', root, workspace)
+            dispatched.assert_called_once()
+            receipt = json.loads(paths['receipt'].read_text())
+            self.assertEqual(receipt['status'], 'failed-gate')
+            self.assertTrue(receipt['restored'])
+            self.assertFalse(receipt['automatic_junction_authorized'])
+            self.assertEqual(receipt['first_episode_successes'], 460)
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                self.gate.validate_outputs(paths)
 
     def test_real_dispatch_signature_and_mock_sim_produce_measured_failure_only(self):
         source = (ROOT / 'scripts/production_v1322.py').read_text()
