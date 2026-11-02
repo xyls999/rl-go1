@@ -81,6 +81,24 @@ class EntranceHoldoutTests(unittest.TestCase):
         self.assertIsNone(self.manifest['execution']['holdout_seed'])
         self.assertEqual(self.manifest['execution']['train_and_gate_env']['GO1_PRIVILEGED_ACTOR'], '1')
 
+    def test_preflight_gate_allows_existing_train_outputs_not_existing_gate_outputs(self):
+        baseline = json.loads((ROOT / 'provenance/v1321_teacher_entrance.json').read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            trained = workspace / f"checkpoints/stage1/{self.spec['trained_run_id']}"
+            trained.mkdir(parents=True)
+            with patch.object(self.preflight, 'validate_live_baseline'), \
+                    patch.object(self.preflight, 'validate_mode_outputs') as outputs:
+                self.preflight.validate_components(workspace, ROOT, self.manifest,
+                                                   self.config, baseline,
+                                                   production=True, mode='gate')
+                outputs.assert_called_once()
+                self.assertEqual(outputs.call_args.args[1], 'gate')
+                with self.assertRaisesRegex(ValueError, 'output path already exists'):
+                    self.preflight.validate_components(workspace, ROOT, self.manifest,
+                                                       self.config, baseline,
+                                                       production=True, mode='train')
+
     def test_exact_461_threshold_and_gap_reward_hard_fail_closed(self):
         for count, passed in ((0, False), (460, False), (461, True), (512, True)):
             with self.subTest(count=count):
