@@ -140,13 +140,13 @@ class DiagnosisTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 diagnosis.validate_plan(paths, self.config)
 
-    def test_shell_and_preflight_opt_in_and_no_final_holdout(self):
+    def test_shell_and_preflight_opt_in_without_automatic_next_teacher(self):
         shell = (ROOT / 'scripts/verify_and_train.sh').read_text()
         self.assertIn('preflight-diagnose', shell)
         self.assertIn('dev-diagnose-only', shell)
         self.assertIn('diagnose', shell)
         self.assertIn("[[ \"$mode\" != train ]] || authorization='entrance-full-train-only'", shell)
-        self.assertNotIn('final-gate-only', shell)
+        self.assertNotIn('junction-final-gate-only', shell)
         self.assertIn('validate_diagnosis_inputs', (ROOT / 'scripts/preflight_v1322.py').read_text())
         self.assertIn('require_strict_gate_report', (ROOT / 'scripts/production_v1322.py').read_text())
         self.assertIn('validate_gate', (ROOT / 'scripts/production_v1322.py').read_text())

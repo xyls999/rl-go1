@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guarded V132.2 test, PhysX, diagnosis, pilot and entrance train modes.
+"""Guarded V132.2 test, PhysX, diagnosis, pilot, entrance train and one-time gate.
 
 The caller owns the v7_sim.lock for this entire process. A mode runs only when
 all live files have freshly matched their pinned baseline hashes.
@@ -22,6 +22,7 @@ from diagnostic_v1322 import (DEV_SEED, command as diagnosis_command,
                               validate_diagnosis_inputs, validate_plan)
 import pilot_v1322
 import train_entrance_v1322
+import gate_entrance_v1322
 
 FAMILIES = (('entrance', 'combined_part_entrance'), ('junction', 'combined_junction'),
             ('long', 'gaps_long'), ('tire', 'tire_field'))
@@ -405,10 +406,38 @@ def run_entrance_train(workspace: Path, root: Path, manifest: dict, config: dict
             'automatic_gate_authorized': False, 'automatic_junction_authorized': False}
 
 
+def run_entrance_gate(workspace: Path, root: Path, manifest: dict, config: dict,
+                      spec: dict, env: dict[str, str], paths: dict, inputs: dict) -> dict:
+    """Score one final first-episode holdout; no teacher-training side effect."""
+    environment = dict(env, GO1_TASK_PLAN=str(paths['plan']), GO1_RUN_ID=f"gate-{spec['gate_run_id']}")
+    require(environment['GO1_PRIVILEGED_ACTOR'] == '1' and
+            environment['GO1_REWARD_CONFIG_PATH'] ==
+            str(workspace / manifest['reward_config']['path']),
+            'holdout observations/reward differ from training')
+    run_logged(gate_entrance_v1322.command(workspace, config, paths, spec), paths['log'],
+               environment, workspace)
+    result = gate_entrance_v1322.validate_result(paths, spec)
+    require(digest(paths['checkpoint']) == spec['checkpoint_sha256'] and
+            digest(paths['plan']) == spec['source_plan_sha256'] and
+            digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'] and
+            digest(root / 'reports' / f"{spec['trained_run_id']}_full_train.receipt") ==
+            inputs['train_receipt_sha256'] and
+            digest(root / 'provenance/holdout_seed_1812341965_audit.txt') ==
+            inputs['seed_audit_sha256'], 'holdout checkpoint, plan or provenance changed during gate')
+    return {'run_id': spec['gate_run_id'], 'seed': spec['holdout_seed'],
+            'checkpoint_sha256': digest(paths['checkpoint']),
+            'plan_sha256': digest(paths['plan']), 'report_sha256': digest(paths['report']),
+            'trace_sha256': digest(paths['trace']), 'log_sha256': digest(paths['log']),
+            'train_receipt_sha256': inputs['train_receipt_sha256'],
+            'seed_audit_sha256': inputs['seed_audit_sha256'],
+            'final_holdout': True, 'automatic_junction_authorized': False, **result}
+
+
 def run(mode: str, root: Path, workspace: Path) -> None:
-    require(mode in ('test', 'smoke', 'diagnose', 'pilot', 'train'),
-            'final gate and other teachers not implemented in this runner')
-    expected_auth = ('entrance-full-train-only' if mode == 'train' else
+    require(mode in ('test', 'smoke', 'diagnose', 'pilot', 'train', 'gate'),
+            'other teachers not implemented in this runner')
+    expected_auth = ('entrance-final-gate-only' if mode == 'gate' else
+                     'entrance-full-train-only' if mode == 'train' else
                      'paired-pilot-only' if mode == 'pilot' else
                      'dev-diagnose-only' if mode == 'diagnose' else 'test-smoke-only')
     require(os.environ.get('V1322_RUN_AUTHORIZED') == expected_auth, 'explicit authorization absent')
@@ -447,6 +476,13 @@ def run(mode: str, root: Path, workspace: Path) -> None:
                                   if mode == 'train' else (None, None))
     train_spec_sha = (digest(root / 'configs/train_entrance_execution.json')
                       if mode == 'train' else None)
+    gate_spec = (json.loads((root / 'configs/gate_entrance_execution.json').read_text(encoding='utf-8'))
+                 if mode == 'gate' else None)
+    gate_paths, gate_inputs = (gate_entrance_v1322.validate_inputs(root, workspace, manifest,
+                                                                 config, gate_spec)
+                                if mode == 'gate' else (None, None))
+    gate_spec_sha = (digest(root / 'configs/gate_entrance_execution.json')
+                     if mode == 'gate' else None)
     if mode == 'smoke':
         receipt = root / 'reports' / names['test_receipt']
         require(receipt.is_file(), 'full project test receipt absent')
@@ -488,13 +524,17 @@ def run(mode: str, root: Path, workspace: Path) -> None:
             elif mode == 'pilot':
                 result = run_pilot(workspace, root, manifest, config, pilot_spec,
                                    environment, pilot_paths, pilot_inputs)
-            else:
+            elif mode == 'train':
                 result = run_entrance_train(workspace, root, manifest, config, train_spec,
                                             environment, train_paths, train_inputs)
+            else:
+                result = run_entrance_gate(workspace, root, manifest, config, gate_spec,
+                                           environment, gate_paths, gate_inputs)
         require(overlay.restored, 'overlay not restored')
         require(digest(root / manifest['reward_config']['path']) == manifest['reward_config']['sha256'],
                 'reward TOML changed during run')
-        receipt = (train_paths['receipt'] if mode == 'train' else
+        receipt = (gate_paths['receipt'] if mode == 'gate' else
+                   train_paths['receipt'] if mode == 'train' else
                    pilot_paths['receipt'] if mode == 'pilot' else
                    diagnosis_paths['receipt'] if mode == 'diagnose' else
                    root / 'reports' / names['test_receipt' if mode == 'test' else 'smoke_receipt'])
@@ -504,14 +544,19 @@ def run(mode: str, root: Path, workspace: Path) -> None:
         if mode == 'train':
             require(digest(root / 'configs/train_entrance_execution.json') == train_spec_sha,
                     'full entrance train specification changed during execution')
+        if mode == 'gate':
+            require(digest(root / 'configs/gate_entrance_execution.json') == gate_spec_sha,
+                    'final entrance gate specification changed during execution')
         with receipt.open('x', encoding='utf-8') as stream:
-            json.dump({'status': 'trained-unverified' if mode == 'train' else
+            json.dump({'status': ('passed-gate' if result['gate_passed'] else 'failed-gate')
+                       if mode == 'gate' else 'trained-unverified' if mode == 'train' else
                        'pilot-diagnostic-only' if mode == 'pilot' else
                        'diagnostic' if mode == 'diagnose' else 'passed',
                        'mode': mode, 'restored': True,
                        'manifest_sha256': digest(root / 'configs/manifest.json'),
                        'pilot_spec_sha256': pilot_spec_sha if mode == 'pilot' else None,
                        'train_spec_sha256': train_spec_sha if mode == 'train' else None,
+                       'gate_spec_sha256': gate_spec_sha if mode == 'gate' else None,
                        'reward_sha256': manifest['reward_config']['sha256'], **result}, stream)
             stream.write('\n')
     finally:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Guarded test, PhysX, diagnosis, paired pilot, and entrance-only full train.
-# Final holdout gate and later teacher launches do not exist in this script.
+# Guarded test, PhysX, diagnosis, paired pilot, entrance train, and entrance-only gate.
+# No junction or later teacher launches exist in this script.
 set -Eeuo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 mode="${1:-}"
@@ -92,17 +92,18 @@ if [[ "$mode" == mock-restore || "$mode" == mock-signal ]]; then
   fi
   false # deliberate failure exercises the EXIT trap (never a real run)
 fi
-if [[ "$mode" != preflight && "$mode" != preflight-test && "$mode" != preflight-smoke && "$mode" != preflight-diagnose && "$mode" != preflight-pilot && "$mode" != preflight-train && "$mode" != test && "$mode" != smoke && "$mode" != diagnose && "$mode" != pilot && "$mode" != train ]] || [[ "${V1322_MOCK:-}" == 1 ]]; then
-  echo 'BLOCKED: only guarded entrance training is implemented; final gate and other teachers are unavailable' >&2
+if [[ "$mode" != preflight && "$mode" != preflight-test && "$mode" != preflight-smoke && "$mode" != preflight-diagnose && "$mode" != preflight-pilot && "$mode" != preflight-train && "$mode" != preflight-gate && "$mode" != test && "$mode" != smoke && "$mode" != diagnose && "$mode" != pilot && "$mode" != train && "$mode" != gate ]] || [[ "${V1322_MOCK:-}" == 1 ]]; then
+  echo 'BLOCKED: only guarded entrance training and strict entrance gate are implemented' >&2
   exit 85
 fi
-if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke || "$mode" == preflight-diagnose || "$mode" == preflight-pilot || "$mode" == preflight-train ]]; then
+if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke || "$mode" == preflight-diagnose || "$mode" == preflight-pilot || "$mode" == preflight-train || "$mode" == preflight-gate ]]; then
   [[ "${PREFLIGHT_ONLY:-}" == 1 ]] || { echo 'PREFLIGHT_ONLY=1 required' >&2; exit 85; }
 else
   authorization='test-smoke-only'
   [[ "$mode" != diagnose ]] || authorization='dev-diagnose-only'
   [[ "$mode" != pilot ]] || authorization='paired-pilot-only'
   [[ "$mode" != train ]] || authorization='entrance-full-train-only'
+  [[ "$mode" != gate ]] || authorization='entrance-final-gate-only'
   [[ "${V1322_RUN_AUTHORIZED:-}" == "$authorization" && "${PREFLIGHT_ONLY:-0}" != 1 ]] || {
     echo "BLOCKED: $mode needs explicit authorization" >&2; exit 85;
   }
@@ -113,7 +114,7 @@ workspace=/config/Desktop/sim
 [[ -f "$workspace/reports/v7_sim.lock" && ! -L "$workspace/reports/v7_sim.lock" ]] || { echo 'PREFLIGHT_BLOCKED: preexisting regular simulator lock required' >&2; exit 86; }
 exec 9>>"$workspace/reports/v7_sim.lock"
 flock -n 9 || { echo 'PREFLIGHT_BLOCKED: simulator lock busy' >&2; exit 86; }
-if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke || "$mode" == preflight-diagnose || "$mode" == preflight-pilot || "$mode" == preflight-train ]]; then
+if [[ "$mode" == preflight || "$mode" == preflight-test || "$mode" == preflight-smoke || "$mode" == preflight-diagnose || "$mode" == preflight-pilot || "$mode" == preflight-train || "$mode" == preflight-gate ]]; then
   /root/env_isaaclab/bin/python "$root/scripts/preflight_v1322.py" "$mode"
 else
   exec /root/env_isaaclab/bin/python "$root/scripts/production_v1322.py" "$mode"

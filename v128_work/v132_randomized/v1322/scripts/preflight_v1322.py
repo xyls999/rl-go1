@@ -134,9 +134,11 @@ def validate_mode_outputs(workspace: Path, mode: str, run_id: str, *, attempt: i
         require(manifest is not None, 'development manifest missing')
         validate_outputs(artifacts(workspace, manifest))
         return
-    if mode in ('pilot', 'train'):
-        module_name = 'pilot_v1322' if mode == 'pilot' else 'train_entrance_v1322'
-        spec_name = 'pilot_execution.json' if mode == 'pilot' else 'train_entrance_execution.json'
+    if mode in ('pilot', 'train', 'gate'):
+        module_name = {'pilot': 'pilot_v1322', 'train': 'train_entrance_v1322',
+                       'gate': 'gate_entrance_v1322'}[mode]
+        spec_name = {'pilot': 'pilot_execution.json', 'train': 'train_entrance_execution.json',
+                     'gate': 'gate_entrance_execution.json'}[mode]
         import importlib
         module = importlib.import_module(module_name)
         root = workspace / 'v128_work/v132_randomized/v1322'
@@ -196,9 +198,12 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
                 f'reports/lp_plan_{run_id}.json', f'reports/lp_gate_plan_{run_id}.json',
                 f'reports/v1322_{run_id}_trace.jsonl']
     require(len(set(outputs)) == len(outputs), 'duplicate output paths')
-    for relative in outputs:
-        target = workspace / relative
-        require(not target.exists() and not target.is_symlink(), 'output path already exists: ' + relative)
+    if mode != 'gate':
+        for relative in outputs:
+            target = workspace / relative
+            require(not target.exists() and not target.is_symlink(), 'output path already exists: ' + relative)
+    # Gate requires an existing trained checkpoint, validated separately against its
+    # immutable training receipt. Its own report/trace/log/receipt must still be fresh.
     env = execution['train_and_gate_env']
     require(env['GO1_REWARD_CONFIG_PATH'] ==
             'v128_work/v132_randomized/v1322/configs/rewards_stage1_gaps_v131_landing_stability.toml'
@@ -206,10 +211,10 @@ def validate_components(workspace: Path, root: Path, manifest: dict, config: dic
             'train/gate reward or observation mask changed')
     require(not any(key in env for key in ('GO1_V29_TEACHER_DISTILL', 'GO1_WATCHDOG', 'GO1_AUTO_P2')),
             'forbidden automation enabled')
-    if production and mode in ('test', 'smoke', 'diagnose', 'pilot', 'train'):
+    if production and mode in ('test', 'smoke', 'diagnose', 'pilot', 'train', 'gate'):
         validate_mode_outputs(workspace, mode, run_id, attempt=execution['test_attempt'],
                               manifest=manifest)
-    if production and mode not in ('test', 'smoke', 'diagnose', 'pilot', 'train'):
+    if production and mode not in ('test', 'smoke', 'diagnose', 'pilot', 'train', 'gate'):
         require(config['gate_holdout_seed'] is not None and
                 config['gate_holdout_seed'] == execution['holdout_seed'] and
                 execution['seed_audit_sha256'], 'final holdout seed unaudited')
@@ -240,8 +245,8 @@ def validate_read_only_preflight(workspace: Path, root: Path, manifest: dict,
                                  config: dict, baseline: dict, *, mode: str,
                                  gpu_mib: list[int]) -> None:
     """Permit tests and old-checkpoint diagnosis without choosing a final holdout."""
-    require(mode in ('test', 'smoke', 'diagnose', 'pilot', 'train'),
-            'only validated preparation/entrance training may omit the final seed')
+    require(mode in ('test', 'smoke', 'diagnose', 'pilot', 'train', 'gate'),
+            'only validated preparation/entrance gate may use the frozen manifest')
     validate_components(workspace, root, manifest, config, baseline, production=True, mode=mode)
     require(len(gpu_mib) == 4 and all(0 <= value <= 256 for value in gpu_mib),
             'GPU busy or count != 4')
@@ -259,6 +264,10 @@ def validate_read_only_preflight(workspace: Path, root: Path, manifest: dict,
     if mode == 'train':
         from train_entrance_v1322 import validate_inputs
         spec = json.loads((root / 'configs/train_entrance_execution.json').read_text(encoding='utf-8'))
+        validate_inputs(root, workspace, manifest, config, spec)
+    if mode == 'gate':
+        from gate_entrance_v1322 import validate_inputs
+        spec = json.loads((root / 'configs/gate_entrance_execution.json').read_text(encoding='utf-8'))
         validate_inputs(root, workspace, manifest, config, spec)
 
 
@@ -281,7 +290,8 @@ def main() -> int:
         require(workspace.is_dir(), 'remote workspace not mounted; remote check pending')
         mode_arg = sys.argv[1] if len(sys.argv) > 1 else 'preflight'
         require(mode_arg in ('preflight', 'preflight-test', 'preflight-smoke',
-                             'preflight-diagnose', 'preflight-pilot', 'preflight-train'),
+                             'preflight-diagnose', 'preflight-pilot', 'preflight-train',
+                             'preflight-gate'),
                 'unknown read-only preflight mode')
         import fcntl
         lock = workspace / 'reports/v7_sim.lock'
