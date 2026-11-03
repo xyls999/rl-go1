@@ -8,7 +8,8 @@
 # the policy degenerated into an in-place hop that averaged 0.14 m/s.
 
 [track_linear_velocity]
-weight = 3.0
+# Speed-autonomy treatment: the command is directional, not a target magnitude.
+weight = 0.0
 # The tracking kernel has to keep gradient across the whole commanded band.
 # At std = 0.20 a 0.4 m/s error scores exp(-4) ~ 0.02, so the term was dead
 # exactly when the policy ran at twice its command and nothing pulled it back.
@@ -19,13 +20,14 @@ weight = 0.2
 std = 0.35
 
 [forward_velocity]
-weight = 0.5
+weight = 0.0
 target_velocity = 0.45
 negative_velocity_penalty = 1.0
 
 [forward_progress]
 weight = 4.0
-max_progress_speed = 0.9
+# Reward saturates here; this is not a hard physical speed limit.
+max_progress_speed = 1.2
 
 [goal_closeness]
 weight = 1.5
@@ -234,7 +236,8 @@ weight = 1
 max_air_time = 0.55
 
 [no_progress]
-weight = -3.0
+# No minimum-speed floor in the speed-autonomy treatment.
+weight = 0.0
 min_speed = 0.25
 
 [gap_intrusion]
@@ -260,13 +263,8 @@ bonus = 6
 
 
 [speed_error_l1]
-# Constant-gradient penalty on |realised - commanded| forward speed (m/s).
-# Measured: with weight -0.5 / scale 0.5 the eval still showed 0.958 m/s against a
-# 0.482 command, so the charged magnitude was ~4x weaker than intended and the
-# progress rewards dominated. Scale 0.10 makes the same error cost ~5x more.
-# Weight -0.35 makes a 0.4 m/s overspeed cost ~1.4 per step, which is larger
-# than any saturated progress term can pay back.
-weight = -0.35
+# Disabled in the speed-autonomy treatment: speed magnitude is not tracked.
+weight = 0.0
 scale = 0.10
 
 # Positive, bounded bonus only for stable forward landings in the mixed
@@ -287,9 +285,8 @@ weight = 0.8
 [safe_segment]
 weight = 6.0
 
-# Per contacting foot within 5 cm on either solid lip of a real entrance gap.
 [edge_contact]
-weight = -1.0
+weight = 0.0
 
 [tire_stall]
 weight = -2.0

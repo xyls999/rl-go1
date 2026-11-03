@@ -1,4 +1,4 @@
-"""V132.3 pilot must isolate only edge-contact weight and fail closed."""
+"""V132.3 speed-autonomy pilot must fail closed and preserve the prior evidence."""
 import importlib
 import json
 from pathlib import Path
@@ -20,21 +20,30 @@ class PilotRunnerTests(unittest.TestCase):
         self.spec = json.loads((ROOT / 'configs/pilot_execution.json').read_text())
         self.config = json.loads((ROOT / 'configs/teacher_entrance.json').read_text())
 
-    def test_pinned_plan_and_only_edge_weight_differs(self):
+    def test_pinned_plan_and_only_speed_objective_differs(self):
         plan = self.pilot.build_plan(ROOT, self.config, self.spec)
         self.assertEqual(len(plan['instances']), 64)
         self.assertEqual(set(plan['families']), {'combined_part_entrance'})
         treatment = (ROOT / self.manifest['reward_config']['path']).read_bytes()
-        control = self.pilot.control_toml(treatment)
-        self.pilot.validate_tomls(control, treatment, self.spec, self.manifest)
-        with self.assertRaises(ValueError):
-            self.pilot.validate_tomls(control.replace(b'weight = 6.0', b'weight = 0.0', 1),
-                                      treatment, self.spec, self.manifest)
         old_reward = (ROOT.parent / 'v1322/configs/rewards_stage1_gaps_v131_landing_stability.toml').read_bytes()
+        control = self.pilot.control_toml(old_reward)
+        self.assertEqual(__import__('tomllib').loads(control.decode())['edge_contact']['weight'], 0.0)
+        self.pilot.validate_tomls(control, treatment, self.spec, self.manifest)
         self.pilot.validate_against_v1322(control, old_reward)
-        with self.assertRaisesRegex(ValueError, 'old reward'):
-            self.pilot.validate_against_v1322(
-                control.replace(b'weight = 6.0', b'weight = 1.0', 1), old_reward)
+        with self.assertRaisesRegex(ValueError, 'TOML SHA mismatch'):
+            self.pilot.validate_tomls(control, treatment.replace(b'weight = -12.0',
+                                                                  b'weight = -120.0', 1),
+                                      self.spec, self.manifest)
+        with self.assertRaisesRegex(ValueError, 'V132.2 reward'):
+            self.pilot.validate_against_v1322(control.replace(b'weight = -12.0',
+                                                               b'weight = -120.0', 1), old_reward)
+
+    def test_attempt_two_artifacts_are_unique_and_future_attempts_block(self):
+        names = self.production.attempt_artifacts(2)
+        self.assertEqual(names['test_log'], 'v1323_tests_a02.log')
+        self.assertEqual(names['smoke_receipt'], 'v1323_physx_a02.receipt')
+        with self.assertRaisesRegex(ValueError, 'attempt'):
+            self.production.attempt_artifacts(3)
 
     def test_existing_output_or_candidate_sha_drift_blocks_before_overlay(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -76,18 +85,12 @@ class PilotRunnerTests(unittest.TestCase):
             self.pilot.summarize({'episodes': 64, 'environments': report['environments']},
                                  first[:63] + [repeated, first[63]], 'control', 64)
 
-    def test_pilot_treatment_requires_observed_negative_edge_reward(self):
-        with tempfile.TemporaryDirectory() as directory:
-            log = Path(directory) / 'arm.log'
-            log.write_text('Episode_Reward/edge_contact: 0.0000\n' * 30)
-            self.assertEqual(self.production._edge_activation(log, 0.0), 0.0)
-            with self.assertRaisesRegex(ValueError, 'never activated'):
-                self.production._edge_activation(log, -1.0)
-            log.write_text('Episode_Reward/edge_contact: -0.0100\n' +
-                           'Episode_Reward/edge_contact: 0.0000\n' * 29)
-            self.assertLess(self.production._edge_activation(log, -1.0), 0)
-            with self.assertRaisesRegex(ValueError, 'control'):
-                self.production._edge_activation(log, 0.0)
+    def test_common_environment_clears_ambient_direction_only_switch(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                'os.environ', {'GO1_STAGE1_DIRECTION_ONLY': '1'}):
+            env = self.production.common_environment(Path(directory),
+                {'execution': {'train_and_gate_env': {}}})
+            self.assertNotIn('GO1_STAGE1_DIRECTION_ONLY', env)
 
     def test_commands_match_warmstart_speed_and_256_coverage(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -97,8 +100,8 @@ class PilotRunnerTests(unittest.TestCase):
             commands = [self.pilot.train_command(workspace, self.config, self.spec, arm, plan, source)
                         for arm in ('control', 'treatment')]
             for command in commands:
-                for option, value in (('--num-envs', '64'), ('--iterations', '30'),
-                                      ('--critic-warmup-iterations', '5'), ('--seed', '42'),
+                for option, value in (('--num-envs', '64'), ('--iterations', '200'),
+                                      ('--critic-warmup-iterations', '40'), ('--seed', '42'),
                                       ('--speed-min', '0.35'), ('--speed-max', '0.8'),
                                       ('--initialize-from', str(source))):
                     self.assertEqual(command[command.index(option) + 1], value)
@@ -177,6 +180,8 @@ class PilotRunnerTests(unittest.TestCase):
             self.production.mode_authorization('train')
         self.assertEqual(self.spec['checkpoint_sha256'],
                          '1a120f37c23f621e9f08772b1f6fc8520fabc4fb642b1da6342e08a96c7793f9')
+        self.assertEqual(self.spec['pilot_id'], 'go1-v1323-speed-autonomy-pilot-a02')
+        self.assertEqual(self.spec['test_attempt'], 2)
         self.assertIs(self.spec['final_holdout'], False)
 
 

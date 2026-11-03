@@ -1,2 +1,2 @@
 * text eol=lf
-/configs/rewards_stage1_gaps_v131_landing_stability.toml -text -eol
+/configs/rewards_stage1_gaps_v131_landing_stability.toml -text -eol whitespace=cr-at-eol

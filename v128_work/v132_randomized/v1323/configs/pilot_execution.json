@@ -1,26 +1,26 @@
 {
-  "purpose": "matched entrance edge-contact diagnostic pilot; never a teacher gate",
-  "frozen_manifest_sha256": "b77cb4099ca6a68d1ffd574f1b8dfe505b68de352cc9dc302772b33e1851bc9e",
+  "purpose": "matched entrance speed-autonomy diagnostic pilot; never a teacher gate",
+  "frozen_manifest_sha256": "59281cf96bcbf0a5abd646b399e7bc748ebdc336613a6fef07d4fc1186db396d",
   "source_plan_sha256": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b",
   "plan_sha256": "d74227ba1c458cdbd4fbdb34d8e1012c2848304d59c212eae8ccb5ba2488b290",
   "checkpoint_sha256": "1a120f37c23f621e9f08772b1f6fc8520fabc4fb642b1da6342e08a96c7793f9",
   "train_receipt_sha256": "b728dee938262b83d9bcb17f8f1e327eaf3adea0eb0d1566fc6f064fa1c9b185",
-  "test_receipt_sha256": "766e5b3299bc7c481464a45967de0ef6796c204794f119f96e4df6a91fabb7a8",
-  "smoke_receipt_sha256": "ec88d17a7096c5c070ce2f8480b0cf6486b8879092f820c8e4006098b34a2434",
-  "control_toml_sha256": "8d2fa7dbb3ba959a3eea64b6f91490f4008d97f65424251f04eea3fbb8f7365e",
-  "treatment_toml_sha256": "1ea14d3ccafa73ebe9d40263f85078589d449fc630d42a8dc922195f959f69a1",
-  "pilot_id": "go1-v1323-edge-contact-pilot-a01",
+  "test_receipt_sha256": null,
+  "smoke_receipt_sha256": null,
+  "control_toml_sha256": "5d109ebb63bd9f8901120aaffdf4982b87e7b62cc91a12d9f5b4962344dbfb20",
+  "treatment_toml_sha256": "ee416d4d615c151823e9591044ad5b58a1cfa44be6dfabe92e447d3765243e98",
+  "pilot_id": "go1-v1323-speed-autonomy-pilot-a02",
   "run_ids": {
-    "control": "go1-v1323-edge-contact-pilot-a01-control",
-    "treatment": "go1-v1323-edge-contact-pilot-a01-treatment"
+    "control": "go1-v1323-speed-autonomy-pilot-a02-control",
+    "treatment": "go1-v1323-speed-autonomy-pilot-a02-treatment"
   },
   "num_envs": 64,
   "evaluation_episode_quota": 256,
-  "iterations": 30,
-  "critic_warmup_iterations": 5,
+  "iterations": 200,
+  "critic_warmup_iterations": 40,
   "train_seed": 42,
   "development_evaluation_seed": 2028,
-  "test_attempt": 1,
+  "test_attempt": 2,
   "final_holdout": false,
   "automatic_full_training_authorized": false
 }

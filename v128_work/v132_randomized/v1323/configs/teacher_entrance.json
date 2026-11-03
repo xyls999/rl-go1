@@ -1,5 +1,5 @@
 {
-  "comment": "V132.3 entrance edge-contact diagnostic pilot; both arms initialize from failed V132.2 model_649; no formal holdout or teacher gate",
+  "comment": "V132.3 speed-autonomy diagnostic a02; both arms initialize from failed V132.2 model_649; no formal holdout or teacher gate",
   "training_roster": "single:combined_part_entrance",
   "gate_family": "combined_part_entrance",
   "difficulty_max": 0.6,

@@ -27,11 +27,12 @@ def mode_authorization(mode: str) -> str:
 
 
 def attempt_artifacts(attempt: int) -> dict[str, str]:
-    require(attempt == 1, 'unapproved attempt number')
-    return {'test_log': 'v1323_tests_a01.log', 'focus_log': 'v1323_focus_a01.log',
-            'test_receipt': 'v1323_test_a01.receipt',
-            'smoke_receipt': 'v1323_physx_a01.receipt',
-            'smoke_prefix': 'v1323_smoke_a01_'}
+    require(attempt in (1, 2), 'unapproved attempt number')
+    suffix = f'a{attempt:02d}'
+    return {'test_log': f'v1323_tests_{suffix}.log', 'focus_log': f'v1323_focus_{suffix}.log',
+            'test_receipt': f'v1323_test_{suffix}.receipt',
+            'smoke_receipt': f'v1323_physx_{suffix}.receipt',
+            'smoke_prefix': f'v1323_smoke_{suffix}_'}
 
 
 def targets(root: Path, workspace: Path, manifest: dict, mode: str) -> list[tuple[Path, Path, str | None, str]]:
@@ -158,7 +159,8 @@ def ensure_idle() -> None:
 def common_environment(workspace: Path, manifest: dict) -> dict[str, str]:
     environment = dict(os.environ)
     for name in ('GO1_V29_TEACHER_DISTILL', 'GO1_WATCHDOG', 'GO1_AUTO_P2',
-                 'GO1_V29_TEACHERS', 'GO1_V23_TIRE_BRAKE', 'GO1_ACTOR_FILTER'):
+                 'GO1_V29_TEACHERS', 'GO1_V23_TIRE_BRAKE', 'GO1_ACTOR_FILTER',
+                 'GO1_STAGE1_DIRECTION_ONLY'):
         environment.pop(name, None)
     for name, value in manifest['execution']['train_and_gate_env'].items():
         environment[name] = str(workspace / value) if name.endswith('_PATH') else str(value)
@@ -193,7 +195,7 @@ def run_tests(workspace: Path, root: Path, manifest: dict, env: dict[str, str]) 
     names = attempt_artifacts(manifest['execution']['test_attempt'])
     focus = root / 'reports' / names['focus_log']
     run_logged(['/root/env_isaaclab/bin/python', '-m', 'unittest', 'discover', '-s',
-                str(root / 'tests'), '-p', 'test_*v1323.py', '-v'], focus, env, workspace)
+                str(root / 'tests'), '-p', 'test_*v132[34].py', '-v'], focus, env, workspace)
     focus_text = focus.read_text(encoding='utf-8', errors='replace')
     require(re.search(r'Ran \d+ tests?', focus_text) is not None and
             re.search(r'^OK\s*$', focus_text, re.MULTILINE) is not None,
@@ -212,11 +214,13 @@ def run_smoke(workspace: Path, root: Path, manifest: dict, env: dict[str, str]) 
     passed = {}
     for index, (family, kind) in enumerate(FAMILIES):
         ensure_idle()
-        plan = root / 'reports' / f'v1323_smoke_plan_a01_{family}.json'
+        attempt = manifest['execution']['test_attempt']
+        suffix = f'a{attempt:02d}'
+        plan = root / 'reports' / f'v1323_smoke_plan_{suffix}_{family}.json'
         with plan.open('x', encoding='utf-8') as stream:
             json.dump({'families': [kind] * 512, 'difficulty': [.6] * 512,
                        'speed_level': [2] * 512, 'speed_min': .35, 'speed_max': .8}, stream)
-        run_name = f"v1323-{manifest['execution']['run_id']}-a01-{family}"
+        run_name = f"v1323-{manifest['execution']['run_id']}-{suffix}-{family}"
         family_env = dict(env, GO1_TASK_PLAN=str(plan), GO1_RUN_ID=run_name)
         log = root / 'reports' / f"{names['smoke_prefix']}{family}.log"
         command = [str(workspace / 'sim.sh'), 'check', '--stage', 'stage1', '--terrain', 'lp_acrl',
@@ -232,50 +236,43 @@ def run_smoke(workspace: Path, root: Path, manifest: dict, env: dict[str, str]) 
     return {'families': passed}
 
 
-def _edge_activation(log: Path, weight: float) -> float:
-    text = log.read_text(encoding='utf-8', errors='replace')
-    values = [float(value) for value in re.findall(
-        r'Episode_Reward/edge_contact:\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)', text)]
-    require(len(values) == 30, 'edge_contact reward telemetry incomplete')
-    if weight == -1.0:
-        require(min(values) < 0.0, 'edge_contact negative reward never activated')
-    else:
-        require(all(value == 0.0 for value in values), 'control has nonzero edge penalty')
-    return min(values)
-
-
 def run_pilot(workspace: Path, root: Path, manifest: dict, config: dict, spec: dict,
               env: dict[str, str], paths: dict, inputs: dict) -> dict:
     with paths['plan'].open('xb') as stream:
         stream.write(pilot_v1323.json_bytes(inputs['plan']))
     with paths['control_toml'].open('xb') as stream:
         stream.write(inputs['control_toml'])
+    with paths['treatment_toml'].open('xb') as stream:
+        stream.write(inputs['treatment_toml'])
     require(digest(paths['plan']) == spec['plan_sha256'] and
-            digest(paths['control_toml']) == spec['control_toml_sha256'],
+            digest(paths['control_toml']) == spec['control_toml_sha256'] and
+            digest(paths['treatment_toml']) == spec['treatment_toml_sha256'],
             'pilot generated plan/TOML drift')
     arms = {}
     for arm in pilot_v1323.ARMS:
         ensure_idle()
-        reward = (paths['control_toml'] if arm == 'control'
-                  else root / manifest['reward_config']['path'])
+        reward = paths['control_toml'] if arm == 'control' else paths['treatment_toml']
         require(digest(reward) == spec[f'{arm}_toml_sha256'], 'arm reward SHA drift')
         run_id = paths[f'{arm}_run_id']
         environment = dict(env, GO1_RUN_ID=run_id, GO1_TASK_PLAN=str(paths['plan']),
                            GO1_REWARD_CONFIG_PATH=str(reward))
+        if arm == 'treatment':
+            environment['GO1_STAGE1_DIRECTION_ONLY'] = '1'
+        else:
+            environment.pop('GO1_STAGE1_DIRECTION_ONLY', None)
         run_logged(pilot_v1323.train_command(workspace, config, spec, arm,
                                              paths['plan'], inputs['checkpoint']),
                    paths[f'{arm}_train_log'], environment, workspace)
         stage_path = paths[f'{arm}_stage_report']
         require(stage_path.is_file() and not stage_path.is_symlink(), 'pilot stage report absent')
         stage = json.loads(stage_path.read_text(encoding='utf-8'))
-        require(stage.get('run') == run_id and stage.get('iterations') == 30 and
+        require(stage.get('run') == run_id and stage.get('iterations') == 200 and
                 stage.get('task_plan') == str(paths['plan']) and
                 type(stage.get('episodes')) is int and stage['episodes'] > 0 and
                 isinstance(stage.get('environments'), dict) and
                 len(stage['environments']) == 64, 'pilot training report mismatch')
         model = pilot_v1323.latest_checkpoint(paths[f'{arm}_checkpoint_dir'])
         model_sha = digest(model)
-        activation = _edge_activation(paths[f'{arm}_train_log'], 0.0 if arm == 'control' else -1.0)
         ensure_idle()
         eval_env = dict(environment, GO1_RUN_ID=paths[f'{arm}_eval_run_id'])
         run_logged(pilot_v1323.eval_command(workspace, config, spec, arm,
@@ -289,8 +286,9 @@ def run_pilot(workspace: Path, root: Path, manifest: dict, config: dict, spec: d
                 'pilot evaluation provenance mismatch')
         rows = [json.loads(line) for line in trace_path.read_text(encoding='utf-8').splitlines()]
         first = pilot_v1323.summarize(report, rows, arm, 64)
-        arms[arm] = {'run_id': run_id, 'edge_contact_weight': 0.0 if arm == 'control' else -1.0,
-                     'edge_reward_min': activation, 'reward_toml_sha256': digest(reward),
+        arms[arm] = {'run_id': run_id,
+                     'speed_direction_only': arm == 'treatment',
+                     'reward_toml_sha256': digest(reward),
                      'checkpoint_path': str(model), 'checkpoint_sha256': model_sha,
                      'stage_report_sha256': digest(stage_path),
                      'training_log_sha256': digest(paths[f'{arm}_train_log']),
@@ -302,6 +300,7 @@ def run_pilot(workspace: Path, root: Path, manifest: dict, config: dict, spec: d
     require(digest(inputs['checkpoint']) == spec['checkpoint_sha256'] and
             digest(paths['plan']) == spec['plan_sha256'] and
             digest(paths['control_toml']) == spec['control_toml_sha256'] and
+            digest(paths['treatment_toml']) == spec['treatment_toml_sha256'] and
             digest(root / manifest['reward_config']['path']) == spec['treatment_toml_sha256'],
             'pilot pinned inputs changed during arms')
     control, treatment = (arms[arm]['evaluation_first_episode'] for arm in pilot_v1323.ARMS)

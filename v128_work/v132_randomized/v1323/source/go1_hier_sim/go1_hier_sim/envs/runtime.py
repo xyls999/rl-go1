@@ -64,6 +64,8 @@ from .gap_contact_v9 import (gap_active_from_bounds, grounded_nonfoot_contact,
                              vertical_link_rays, body_contact_zone)
 from .balance_energy_v9 import balance_energy_score
 from .speed_band_v12 import bounded_observable_command
+from .speed_autonomy_v1324 import (autonomous_progress_reference,
+                                   direction_only_command)
 from .episode_trace_v12 import EpisodeRewardTracker
 from .observable_gap_v10 import fine_gap_from_hits, fine_view_clear, lateral_gap_spread
 from .handoff_v10 import handoff_step
@@ -654,6 +656,8 @@ class HierarchicalRuntime:
             desired[:, 0], scale, self.env.cfg.hier_speed_min,
             self.env.cfg.hier_speed_max,
         )
+        if os.environ.get("GO1_STAGE1_DIRECTION_ONLY") == "1":
+            desired = direction_only_command(desired)
         return desired
 
     def _course_speed_scale(self):
@@ -1835,9 +1839,14 @@ class HierarchicalRuntime:
         # at the command earns the full term and moving faster earns no extra. With a
         # fixed reference the low level learns "always run flat out" and ignores the
         # upper layer's commanded speed entirely (measured: 0.93 m/s for every command).
-        progress_reference = self._command[:, 0].clamp(
-            min=cfg["velocity_direction"]["min_speed"]
-        )
+        if os.environ.get("GO1_STAGE1_DIRECTION_ONLY") == "1":
+            progress_reference = autonomous_progress_reference(
+                self._command[:, 0], cfg["forward_progress"]["max_progress_speed"]
+            )
+        else:
+            progress_reference = self._command[:, 0].clamp(
+                min=cfg["velocity_direction"]["min_speed"]
+            )
         progress_ratio = forward_delta / (CONTROL_DT * progress_reference)
         # Speed-neutral forward credit (saturates at 1) plus an asymmetric penalty for
         # moving backwards relative to the command: the old clamp(-1, 1) form supplied

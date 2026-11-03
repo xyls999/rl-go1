@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-BASE_SHA = 'b77cb4099ca6a68d1ffd574f1b8dfe505b68de352cc9dc302772b33e1851bc9e'
+BASE_SHA = '59281cf96bcbf0a5abd646b399e7bc748ebdc336613a6fef07d4fc1186db396d'
 OLD_REWARD_SHA = 'cfde98e63504329ee1e3d13e0f19adf9207700a8ef1288703f824190680358ca'
 BASELINE_REWARD_CONFIG_SHA = '7b46c3a7eb3b423de82eecccdfe7c4750e50cfbaeb94fb1a14e149b6025a834e'
 MODEL_SHA = '1a120f37c23f621e9f08772b1f6fc8520fabc4fb642b1da6342e08a96c7793f9'
@@ -41,7 +41,8 @@ def validate_candidate_sources(root: Path, manifest: dict) -> None:
     require(seen == {'cli.py', 'runtime.py', 'geometry.py', 'config.py', 'reward_config.py',
                      'strict_gate_v1322.py', 'entrance_support_v1322.py',
                      'edge_contact_v1323.py', 'gap_score_v1321.py',
-                     'landing_stability_v131.py'}, 'candidate imports incomplete')
+                     'landing_stability_v131.py', 'speed_autonomy_v1324.py'},
+            'candidate imports incomplete')
 
 
 def validate_pinned_inputs(root: Path, workspace: Path, manifest: dict, config: dict) -> None:
@@ -57,7 +58,7 @@ def validate_pinned_inputs(root: Path, workspace: Path, manifest: dict, config: 
     from pilot_v1323 import control_toml, validate_against_v1322, validate_tomls
     treatment = (root / manifest['reward_config']['path']).read_bytes()
     spec = json.loads((root / 'configs/pilot_execution.json').read_text(encoding='utf-8'))
-    control = control_toml(treatment)
+    control = control_toml(old_reward.read_bytes())
     validate_tomls(control, treatment, spec, manifest)
     validate_against_v1322(control, old_reward.read_bytes())
     require(digest(root / 'provenance/v1321_gate_plan.json') == SOURCE_PLAN_SHA == PLAN_SHA,
@@ -65,7 +66,8 @@ def validate_pinned_inputs(root: Path, workspace: Path, manifest: dict, config: 
     require(digest(root / 'provenance/reward_config.baseline.py') == BASELINE_REWARD_CONFIG_SHA,
             'live reward loader provenance changed')
     require(manifest['baseline']['reward_config.py'] == BASELINE_REWARD_CONFIG_SHA and
-            manifest['baseline']['edge_contact_v1323.py'] is None,
+            manifest['baseline']['edge_contact_v1323.py'] is None and
+            manifest['baseline']['speed_autonomy_v1324.py'] is None,
             'remote reward loader/edge helper baseline changed')
     require(config['training_roster'] == 'single:combined_part_entrance' and
             config['gate_family'] == 'combined_part_entrance' and
@@ -77,7 +79,7 @@ def validate_pinned_inputs(root: Path, workspace: Path, manifest: dict, config: 
             'checkpoints/stage1/go1-v1322-real-entrance-s01-p1-d1/model_649.pt' and
             manifest['execution']['checkpoint_sha256'] == MODEL_SHA == PINNED_MODEL and
             manifest['execution']['holdout_seed'] is None and
-            manifest['execution']['test_attempt'] == 1,
+            manifest['execution']['test_attempt'] == 2,
             'unapproved checkpoint, speed or development-only pilot settings')
     require(manifest['execution']['train_and_gate_env']['GO1_PRIVILEGED_ACTOR'] == '1' and
             manifest['execution']['train_and_gate_env']['GO1_REWARD_CONFIG_PATH'] ==
@@ -118,7 +120,8 @@ def preflight(workspace: Path, root: Path, mode: str) -> None:
         outputs = ([names['test_log'], names['focus_log'], names['test_receipt']] if mode == 'test'
                    else [names['smoke_receipt']] +
                    [f"{names['smoke_prefix']}{family}.log" for family in ('entrance', 'junction', 'long', 'tire')] +
-                   [f'v1323_smoke_plan_a01_{family}.json' for family in ('entrance', 'junction', 'long', 'tire')])
+                   [f"v1323_smoke_plan_a{manifest['execution']['test_attempt']:02d}_{family}.json"
+                    for family in ('entrance', 'junction', 'long', 'tire')])
         for filename in outputs:
             p = root / 'reports' / filename
             require(not p.exists() and not p.is_symlink(), 'mode output already exists: ' + str(p))
@@ -133,7 +136,9 @@ def preflight(workspace: Path, root: Path, mode: str) -> None:
                     record.get('focus_sha256') == digest(root / 'reports' / names['focus_log']),
                     'full tests evidence drift')
             for family in ('entrance', 'junction', 'long', 'tire'):
-                target = workspace / 'reports' / f"check_v1323-{manifest['execution']['run_id']}-a01-{family}.json"
+                target = workspace / 'reports' / (
+                    f"check_v1323-{manifest['execution']['run_id']}-"
+                    f"a{manifest['execution']['test_attempt']:02d}-{family}.json")
                 require(not target.exists() and not target.is_symlink(),
                         'smoke report already exists: ' + str(target))
 
