@@ -325,6 +325,12 @@ def execute_mode(mode: str, workspace: Path, root: Path, manifest: dict,
                  config: dict, spec: dict, environment: dict, paths: dict,
                  inputs: dict, rows: list[tuple[Path, Path, str | None, str]]) -> dict:
     """Actual test/smoke/pilot branch under the same verified overlay lifetime."""
+    # The read-only preflight runs before this point under the same lock. A
+    # freshly staged version has no reports directory until its first run.
+    reports = root / 'reports'
+    require(not reports.is_symlink(), 'symlinked V132.3 reports directory')
+    reports.mkdir(exist_ok=True)
+    require(reports.is_dir() and not reports.is_symlink(), 'invalid V132.3 reports directory')
     with Overlay(rows, workspace) as overlay:
         if mode == 'test':
             result = run_tests(workspace, root, manifest, environment)

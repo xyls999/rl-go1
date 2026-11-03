@@ -143,6 +143,30 @@ class PilotRunnerTests(unittest.TestCase):
             self.assertEqual(live.read_bytes(), b'active original')
             self.assertFalse(helper.exists())
 
+    def test_fresh_test_dispatch_creates_safe_reports_directory_before_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            root = workspace / 'v128_work/v132_randomized/v1323'
+            root.mkdir(parents=True)
+            (workspace / 'reports').mkdir()
+
+            def fake_external_command(command, log, env, cwd):
+                # Only the external simulator is replaced; the actual test
+                # dispatcher still opens both new log paths and parses them.
+                text = 'Ran 2 tests in 0.01s\n\nOK\n' if 'unittest' in command else '362 passed\n'
+                with log.open('x', encoding='utf-8') as stream:
+                    stream.write(text)
+
+            with patch.object(self.production, 'run_logged', side_effect=fake_external_command):
+                result = self.production.execute_mode(
+                    'test', workspace, root, {'execution': {'test_attempt': 1}}, {},
+                    None, {}, None, None, [])
+            self.assertTrue((root / 'reports').is_dir())
+            self.assertEqual(result['focus_sha256'],
+                             self.preflight.digest(root / 'reports/v1323_focus_a01.log'))
+            self.assertEqual(result['log_sha256'],
+                             self.preflight.digest(root / 'reports/v1323_tests_a01.log'))
+
     def test_real_dispatch_pilot_and_no_other_training_mode(self):
         self.assertIn('pilot', self.production.ALLOWED_MODES)
         self.assertNotIn('train', self.production.ALLOWED_MODES)
