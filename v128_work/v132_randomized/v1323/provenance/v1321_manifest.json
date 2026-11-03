@@ -1,0 +1,72 @@
+{
+  "command_speed_mps": [
+    0.35,
+    0.8
+  ],
+  "envs": 512,
+  "holdout_seed": 2028,
+  "source_hashes": {
+    "source/go1_hier_sim/go1_hier_sim/envs/config.py": "6d52c2b8ce82930503375453bf7f4dd864961a8832c30f4f7e86672f5a1f602c",
+    "source/go1_hier_sim/go1_hier_sim/envs/geometry.py": "f60a374596427cc61cad38b6c2e5a1da77f4ff7889906e984c944ad6f736e6b1",
+    "source/go1_hier_sim/go1_hier_sim/envs/runtime.py": "0801936f403beb2a34f51a83525931fa9c23c7e5622d907dc1d92dbbc39f5d92",
+    "v128_work/v131_landing/configs/rewards_stage1_gaps_v131_landing_stability.toml": "cfde98e63504329ee1e3d13e0f19adf9207700a8ef1288703f824190680358ca",
+    "v128_work/v131_landing/source/go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py": "4f862a89833f17c810fd2772678530d5d06f996acd16ea28d8a0a73c6c5e7587",
+    "v128_work/v132_randomized/source/go1_hier_sim/go1_hier_sim/envs/geometry.py": "2304e459344608322890000ff3afe8b3daab5264d6a7b2d26ef5088e7a743a75",
+    "v128_work/v132_randomized/v1321/scripts/run_teacher_v1321.py": "3ab978c3df82fe7d31d37ad5b110e4b42dbed37a143f4000f4bac4849a13997c",
+    "v128_work/v132_randomized/v1321/source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py": "42c20f2f6ebd7325adb2ca1a71415d95af03da524de96651a7b93d07a1055ab8",
+    "v128_work/v132_randomized/v1321/source/go1_hier_sim/go1_hier_sim/envs/runtime.py": "7124735ef2d2ca7d4adbdf412b5d8eb588211e8e450f735a76bea8efb97e305d"
+  },
+  "student_distillation": false,
+  "teachers": {
+    "entrance": {
+      "actor_updates": 600,
+      "base_id": "go1-v1321-real-entrance",
+      "checkpoint": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
+      "checkpoint_sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450",
+      "config": "v128_work/v132_randomized/v1321/configs/teacher_entrance.json",
+      "config_sha256": "b187513b728651dcbc78bfbe91aae07d35ce184b243c9debf85c57fc2bfd2a09",
+      "critic_warmup": 50,
+      "iterations": 650,
+      "kind": "combined_part_entrance",
+      "run_id": "go1-v1321-real-entrance-s01-p1-d1"
+    },
+    "junction": {
+      "actor_updates": 600,
+      "base_id": "go1-v1321-real-junction",
+      "checkpoint": "checkpoints/stage1/go1-v131-junction-landingstability-s01-p1-d1/model_299.pt",
+      "checkpoint_sha256": "a8f6fe5d574ade55334f2292fac3935c134a15284210034e1464498f044f7225",
+      "config": "v128_work/v132_randomized/v1321/configs/teacher_junction.json",
+      "config_sha256": "2a63e6427a61a09de3f932f0a1cfd3246bf724953d0d4a1b481679a6a1c30e68",
+      "critic_warmup": 50,
+      "iterations": 650,
+      "kind": "combined_junction",
+      "run_id": "go1-v1321-real-junction-s01-p1-d1"
+    },
+    "long": {
+      "actor_updates": 400,
+      "base_id": "go1-v1321-real-long",
+      "checkpoint": "checkpoints/stage1/go1-v131-long-landingstability-s01-p1-d1/model_299.pt",
+      "checkpoint_sha256": "91a0910189ba658e904f116f60de720aaaf744026a17c5a9704eb146e193ed48",
+      "config": "v128_work/v132_randomized/v1321/configs/teacher_long.json",
+      "config_sha256": "c2de3e6d05df9e2b6b89a61dce898c90b437fcbac9d10acac76c8283e8395b60",
+      "critic_warmup": 50,
+      "iterations": 450,
+      "kind": "gaps_long",
+      "run_id": "go1-v1321-real-long-s01-p1-d1"
+    },
+    "tire": {
+      "actor_updates": 400,
+      "base_id": "go1-v1321-real-tire",
+      "checkpoint": "checkpoints/stage1/2026-10-29_go1-v129-tire-mixed-segment-cont-s01-p1-d1/model_299.pt",
+      "checkpoint_sha256": "0dbb93c7efd11b079466556059e7539cec251a811bb76bb78b5e2b6671aba3b0",
+      "config": "v128_work/v132_randomized/v1321/configs/teacher_tire.json",
+      "config_sha256": "b6d2512ddc398ccc20bb14c5367e1821f57b53403eec0f3a270f54d45eece055",
+      "critic_warmup": 50,
+      "iterations": 450,
+      "kind": "tire_field",
+      "run_id": "go1-v1321-real-tire-s01-p1-d1"
+    }
+  },
+  "train_seed": 42,
+  "version": 1
+}
