@@ -1,0 +1,9 @@
+Remote read-only audit before any holdout evaluation or holdout configuration was created.
+Host: abc@10.200.212.241:8022, project /config/Desktop/sim.
+Root directories: reports, configs, v128_work, source, scripts. Recursively inspected all file names and contents of .json, .jsonl, .toml, .py, .sh, .md, .receipt, .log, .txt; skipped .git, .venv, node_modules, __pycache__. This text-file audit does not claim to inspect checkpoint binary metadata.
+Verbatim stdout from the successful Python audit:
+AUDIT_UTC 2026-11-02T09:33:54.409407+00:00
+SEED 1812341965 FILES_SCANNED 4030 BYTES_SCANNED 191124552 HITS []
+HOLDOUT_SEED_UNUSED_IN_AUDITED_TEXT
+Exit code: 0.
+Not the previously used development seed 2028. The holdout seed remains unused at this point.

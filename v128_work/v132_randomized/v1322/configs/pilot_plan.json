@@ -1,0 +1,44 @@
+{
+  "arms": [
+    {
+      "initial_checkpoint": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
+      "name": "control",
+      "safe_segment_weight": 6.0,
+      "seed": 42,
+      "supported_short_weight": 0.0
+    },
+    {
+      "initial_checkpoint": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
+      "name": "treatment",
+      "safe_segment_weight": 6.0,
+      "seed": 42,
+      "supported_short_weight": 0.8
+    }
+  ],
+  "environment_count": 64,
+  "evaluation": "dev seed only; no final holdout reuse",
+  "geometry_sha256": "6308300ee3df73b93f72ab852838f866971f07efeca715cca796938e0d925cb7",
+  "initial_checkpoint": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
+  "checkpoint_sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450",
+  "iterations": 30,
+  "only_reward_variable": "supported_short_weight",
+  "proposed_full_train": {
+    "actor_updates": 600,
+    "critic_warmup": 50,
+    "iterations": 650
+  },
+  "seed": 42,
+  "status": "declarative only; model_299 existence/SHA read-only verified; no training or remote overlay authorized",
+  "strict_gate_command_contract": {
+    "checkpoint": null,
+    "episode_trace": "reports/v1322_<run_id>_trace.jsonl",
+    "episodes": 512,
+    "num_envs": 512,
+    "operation": "evaluate",
+    "report_validation": "per-slot first episode, complete 512-row terminal trace, matching checkpoint SHA",
+    "seed": null,
+    "stage": "stage1",
+    "strict_first_episode": true
+  },
+  "terrain_family": "combined_part_entrance"
+}

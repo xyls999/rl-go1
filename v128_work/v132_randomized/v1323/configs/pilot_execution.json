@@ -1,0 +1,26 @@
+{
+  "purpose": "matched entrance speed-autonomy diagnostic pilot; never a teacher gate",
+  "frozen_manifest_sha256": "59281cf96bcbf0a5abd646b399e7bc748ebdc336613a6fef07d4fc1186db396d",
+  "source_plan_sha256": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b",
+  "plan_sha256": "d74227ba1c458cdbd4fbdb34d8e1012c2848304d59c212eae8ccb5ba2488b290",
+  "checkpoint_sha256": "1a120f37c23f621e9f08772b1f6fc8520fabc4fb642b1da6342e08a96c7793f9",
+  "train_receipt_sha256": "b728dee938262b83d9bcb17f8f1e327eaf3adea0eb0d1566fc6f064fa1c9b185",
+  "test_receipt_sha256": "23b32d0c2ff19ff27bc6e8b60495d6a806fd0ad57abfcf76b320239919856504",
+  "smoke_receipt_sha256": "b50238ed664cde114a26baea809cbb91e82715691bec20df8a8851b22d15d7b0",
+  "control_toml_sha256": "5d109ebb63bd9f8901120aaffdf4982b87e7b62cc91a12d9f5b4962344dbfb20",
+  "treatment_toml_sha256": "ee416d4d615c151823e9591044ad5b58a1cfa44be6dfabe92e447d3765243e98",
+  "pilot_id": "go1-v1323-speed-autonomy-pilot-a02",
+  "run_ids": {
+    "control": "go1-v1323-speed-autonomy-pilot-a02-control",
+    "treatment": "go1-v1323-speed-autonomy-pilot-a02-treatment"
+  },
+  "num_envs": 64,
+  "evaluation_episode_quota": 256,
+  "iterations": 200,
+  "critic_warmup_iterations": 40,
+  "train_seed": 42,
+  "development_evaluation_seed": 2028,
+  "test_attempt": 2,
+  "final_holdout": false,
+  "automatic_full_training_authorized": false
+}

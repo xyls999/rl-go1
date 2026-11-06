@@ -1,0 +1,161 @@
+{
+  "baseline": {
+    "cli.py": "e7136aa719e19821d153788d3c909747d55dcb97990205a5b2ec67a39232d1ed",
+    "config.py": "6d52c2b8ce82930503375453bf7f4dd864961a8832c30f4f7e86672f5a1f602c",
+    "entrance_support_v1322.py": null,
+    "gap_score_v1321.py": null,
+    "landing_stability_v131.py": null,
+    "geometry.py": "f60a374596427cc61cad38b6c2e5a1da77f4ff7889906e984c944ad6f736e6b1",
+    "runtime.py": "0801936f403beb2a34f51a83525931fa9c23c7e5622d907dc1d92dbbc39f5d92",
+    "strict_gate_v1322.py": null,
+    "reward_config.py": "7b46c3a7eb3b423de82eecccdfe7c4750e50cfbaeb94fb1a14e149b6025a834e",
+    "edge_contact_v1323.py": null,
+    "speed_autonomy_v1324.py": null
+  },
+  "provenance": {
+    "v1321_config_sha256": "b187513b728651dcbc78bfbe91aae07d35ce184b243c9debf85c57fc2bfd2a09",
+    "v1321_failed_teacher_checkpoint": {
+      "path": "checkpoints/stage1/go1-v1321-real-entrance-s01-p1-d1/model_649.pt",
+      "sha256": "1740e37faec1d9f1f50020faf56690f30ef36712899e532c3db6ec4eecf95e2f"
+    },
+    "v1321_manifest_sha256": "4c67defb31f6c2f0be7994779502108d547b12a198a492cc9221188de227fc55",
+    "v1321_original_checkpoint": {
+      "path": "checkpoints/stage1/go1-v132-randomized-entrance-s01-p1-d1/model_299.pt",
+      "sha256": "d007b70b690b28da1d23c86daabaa221fb28d72f85e49259652ebdded0ab6450"
+    }
+  },
+  "test_overlays": [
+    {
+      "candidate": "v128_work/v132_randomized/v1323/tests/overlays/test_v9_gap_geometry_v132_overlay.py",
+      "candidate_sha256": "9612cd5e8431b3f7dd8c1c7b244aadd40fe8dc9522cce768976c80300697d7cb",
+      "live": "tests/test_v9_gap_geometry.py",
+      "baseline_sha256": "dcd45eaf911a7d583a9023844d06f51f8a94b943549894308bbe66226a22a21a"
+    },
+    {
+      "candidate": "v128_work/v132_randomized/v1323/tests/overlays/test_geometry_v132_overlay.py",
+      "candidate_sha256": "f74641b8e0eae1de1aa44bcf0aaf3f398d5a27983bf373f20a2161ffa9ef5556",
+      "live": "tests/test_geometry.py",
+      "baseline_sha256": "d1851a7078c32355a0996cc37f15aae34d74d1d90443c43940b0d497275553b1"
+    },
+    {
+      "candidate": "v128_work/v132_randomized/v1323/tests/overlays/test_v8_geometry_v1322.py",
+      "candidate_sha256": "3da1d50095a892e7901b541008ed6666ea2d4ff78d792dfbab2c6cb97e54c441",
+      "live": "tests/test_v8_geometry.py",
+      "baseline_sha256": "54ef4a4f384bc13f72a17d6c3e05cd7537aa881eee23e96b9f786760d070dc6d"
+    },
+    {
+      "candidate": "v128_work/v132_randomized/v1323/tests/overlays/test_v8_training_warmstart_v1322.py",
+      "candidate_sha256": "85c09c8b74dfab72fe6ad448e87de355320801f929e4a7df79c3c73e5991b4f0",
+      "live": "tests/test_v8_training_warmstart.py",
+      "baseline_sha256": "46d0d6bcd4a8d44fb8ebe36444de2b7c6f80a63d79e9bb8e42351d4613f9883d"
+    }
+  ],
+  "configuration_sha256": "b28b1e48d5f2574c091e20b9a3c8df8fbb070afc293f61f099294738a75818ed",
+  "execution": {
+    "checkpoint_sha256": "1a120f37c23f621e9f08772b1f6fc8520fabc4fb642b1da6342e08a96c7793f9",
+    "holdout_seed": null,
+    "initial_checkpoint": "checkpoints/stage1/go1-v1322-real-entrance-s01-p1-d1/model_649.pt",
+    "remote_attestation_sha256": "6ad645fc66e8170b8a34eed3654e7aafe95a99ed593239f471b6e702431852e1",
+    "required_idle_gpu_mib_max": 256,
+    "run_id": "go1-v1323-speed-autonomy-a02",
+    "seed_audit_sha256": null,
+    "strict_gate_envs": 512,
+    "test_attempt": 2,
+    "train_and_gate_env": {
+      "GO1_FALL_RELATIVE": "1",
+      "GO1_POLICY_VARIANT": "map_attn_v3",
+      "GO1_PPO_CONFIG_PATH": "configs/ppo_gaps_long.json",
+      "GO1_PRIVILEGED_ACTOR": "1",
+      "GO1_REWARD_CONFIG_PATH": "v128_work/v132_randomized/v1323/configs/rewards_stage1_gaps_v131_landing_stability.toml",
+      "GO1_SOFT_RESPAWN": "1",
+      "GO1_V128_FILTER_OBS": "1",
+      "GO1_V19_MIN_WIDTH": "0.05",
+      "GO1_V19_PRELAUNCH_REWARD": "1",
+      "GO1_V19_PRELAUNCH_SCALE": "4",
+      "GO1_V29_FILTER_OBS": "0",
+      "GO1_V8_LONG_GAP_THRESHOLD": "0.05",
+      "GO1_V8_TERRAIN_CONTROL": "1"
+    },
+    "train_envs": 512,
+    "train_seed": 42
+  },
+  "reward_config": {
+    "path": "configs/rewards_stage1_gaps_v131_landing_stability.toml",
+    "sha256": "ee416d4d615c151823e9591044ad5b58a1cfa44be6dfabe92e447d3765243e98"
+  },
+  "sources": [
+    {
+      "name": "cli.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/cli.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/cli.py",
+      "candidate_sha256": "ec1372cd0d80feeb08fd9b1debf8bf37e5341b2b891db83c09751474a6bce36a"
+    },
+    {
+      "name": "runtime.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/runtime.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/runtime.py",
+      "candidate_sha256": "1acf74df8e797eff83ed88e5db69a26711749715e316ecd119ce1dab1a6ade54"
+    },
+    {
+      "name": "geometry.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/geometry.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/geometry.py",
+      "candidate_sha256": "6308300ee3df73b93f72ab852838f866971f07efeca715cca796938e0d925cb7"
+    },
+    {
+      "name": "config.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/config.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/config.py",
+      "candidate_sha256": "8fc0a686b37743601c3067829c6da47d133b444060cc68c6c89a601bd97e8d7f"
+    },
+    {
+      "name": "reward_config.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/reward_config.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/reward_config.py",
+      "candidate_sha256": "36fd8a28cccd39cdce72334eb115aa2494a169c29a8eb4ea5b0494eaad075efb"
+    },
+    {
+      "name": "strict_gate_v1322.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py",
+      "candidate_sha256": "0ae1b6a0b35faf00111535add573821759dc6149a2e2ee166d3f187a6e8d68a5"
+    },
+    {
+      "name": "entrance_support_v1322.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py",
+      "candidate_sha256": "004b0074ac1972cf634c9304e288a6c318282829a570029c2aa0c243704aab3e"
+    },
+    {
+      "name": "edge_contact_v1323.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/edge_contact_v1323.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/edge_contact_v1323.py",
+      "candidate_sha256": "bb2a0258e4175a703525ba020058fc9fa269640cf96bab0b6bb4b45f863cf851"
+    },
+    {
+      "name": "gap_score_v1321.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py",
+      "candidate_sha256": "e00680ab39e5c1f0ee68a92fad0da0b383d85d04274c5fe0448f6c88d1003001"
+    },
+    {
+      "name": "landing_stability_v131.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py",
+      "candidate_sha256": "4f862a89833f17c810fd2772678530d5d06f996acd16ea28d8a0a73c6c5e7587"
+    },
+    {
+      "name": "speed_autonomy_v1324.py",
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/speed_autonomy_v1324.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/speed_autonomy_v1324.py",
+      "candidate_sha256": "880effbdfe3457b530756d3fe0ba76ae421995b1b95ea14f61f814e36778dcdf"
+    }
+  ],
+  "version": 1,
+  "status": "V132.3 tests, PhysX and paired speed-autonomy diagnostic only; no final gate or teacher training",
+  "pending": [
+    "read-only live SHA/GPU/process/lock preflight before every overlay",
+    "run focused and project tests plus four-family PhysX initialization before pilot",
+    "matched 64-slot speed-autonomy development pilot only; stop after receipt"
+  ]
+}

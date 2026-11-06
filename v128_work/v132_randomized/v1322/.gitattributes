@@ -1,0 +1,4 @@
+# Exact pinned candidate/provenance bytes must survive Windows and Linux checkout.
+* -text
+configs/*.toml whitespace=cr-at-eol
+source/go1_hier_sim/go1_hier_sim/envs/config.py whitespace=-blank-at-eof

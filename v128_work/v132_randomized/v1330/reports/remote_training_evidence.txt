@@ -1,0 +1,26 @@
+V1330 remote execution/reconciliation record
+
+Transport and isolation
+- SSH used password authentication only; no password or credential value is recorded here.
+- Each preflight, seed audit, training run, and post-run verification acquired the existing exclusive lock `reports/v7_sim.lock`.
+- Initial remote read-only check under lock: GPUs reported 39/4/4/4 MiB; V1330 target absent. V1327/V1328 manifest hashes matched the pinned inputs.
+- First wrapper preflight blocked before Python/simulation because CRLF made remote Bash parse `pipefail\r` as an invalid option. The wrapper was normalized to LF, repinned, re-deployed under lock, and local tests rerun. No training had started at that point.
+
+Preflight and seed audit
+- Corrected locked wrapper result: `PREFLIGHT_PASS mode=seed read_only=true`.
+- Seed audit result: `status=fresh-seed-audited`, `purpose=training`, seed `1427789363`, 4,403 files / 218,093,165 bytes scanned; audit SHA-256 `c988998103fc672722ed2c33d686ab8d0b1c0f4933602ee287f4486ce6ff3835`.
+- Locked training-only preflight result: `PREFLIGHT_PASS mode=train read_only=true`.
+
+Single training invocation
+- Run ID: `go1-v1330-gait-gap-aware-s01-p1-d1`
+- Contract: random initialization, 512 environments × 650 iterations; no evaluation, gate, holdout, retry, or follow-on.
+- Runner returned: `status=trained-unverified`, `restored=true`, `diagnostic_ran=false`, `gate_ran=false`.
+- Checkpoint SHA-256 `d72baffb9c641847acccb0f871e2f9eae92b27114d844d629d8a043140c15a51`.
+- Training log SHA-256 `726e6c4e4ad3363a846ecf1ab7c46718582b153e6d96fbf3990c5eee52d3b0b1`.
+- Stage report SHA-256 `48957ca1484487d87b345bf3352bea6f8b96af9aee191437198296253131282e`.
+
+Post-run reconciliation
+- Two initial local verification attempts used an incorrect report path/receipt-field assumption; neither launched anything. Corrected read-only verification used the workspace-relative stage-report path and receipt's `formal_gate` field.
+- Final locked verification passed: exact run ID, 512 environments, 650 iterations, output hashes, seed-audit hash, archived authorization lineage, all source baselines restored, no V1330 overlay backup, no remaining `sim.py train` process, and idle GPUs (39/4/4/4 MiB).
+- The receipt and live manifest both show `trained-unverified`; the receipt records 118,106 episodes, completion `0.00792508424635497`, survival `0.013868897431121196`, `formal_gate=false`, `final_gate_passed=false`, `final_holdout=false`, and `diagnostic_ran=false`.
+- After completion, run/training/diagnostic/gate/retry/follow-on authorizations are false. No further remote execution was performed.

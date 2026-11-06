@@ -1,0 +1,189 @@
+"""V132.3 speed-autonomy pilot must fail closed and preserve the prior evidence."""
+import importlib
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+
+
+class PilotRunnerTests(unittest.TestCase):
+    def setUp(self):
+        self.pilot = importlib.import_module('pilot_v1323')
+        self.production = importlib.import_module('production_v1323')
+        self.preflight = importlib.import_module('preflight_v1323')
+        self.manifest = json.loads((ROOT / 'configs/manifest.json').read_text())
+        self.spec = json.loads((ROOT / 'configs/pilot_execution.json').read_text())
+        self.config = json.loads((ROOT / 'configs/teacher_entrance.json').read_text())
+
+    def test_pinned_plan_and_only_speed_objective_differs(self):
+        plan = self.pilot.build_plan(ROOT, self.config, self.spec)
+        self.assertEqual(len(plan['instances']), 64)
+        self.assertEqual(set(plan['families']), {'combined_part_entrance'})
+        treatment = (ROOT / self.manifest['reward_config']['path']).read_bytes()
+        old_reward = (ROOT.parent / 'v1322/configs/rewards_stage1_gaps_v131_landing_stability.toml').read_bytes()
+        control = self.pilot.control_toml(old_reward)
+        self.assertEqual(__import__('tomllib').loads(control.decode())['edge_contact']['weight'], 0.0)
+        self.pilot.validate_tomls(control, treatment, self.spec, self.manifest)
+        self.pilot.validate_against_v1322(control, old_reward)
+        with self.assertRaisesRegex(ValueError, 'TOML SHA mismatch'):
+            self.pilot.validate_tomls(control, treatment.replace(b'weight = -12.0',
+                                                                  b'weight = -120.0', 1),
+                                      self.spec, self.manifest)
+        with self.assertRaisesRegex(ValueError, 'V132.2 reward'):
+            self.pilot.validate_against_v1322(control.replace(b'weight = -12.0',
+                                                               b'weight = -120.0', 1), old_reward)
+
+    def test_attempt_two_artifacts_are_unique_and_future_attempts_block(self):
+        names = self.production.attempt_artifacts(2)
+        self.assertEqual(names['test_log'], 'v1323_tests_a02.log')
+        self.assertEqual(names['smoke_receipt'], 'v1323_physx_a02.receipt')
+        with self.assertRaisesRegex(ValueError, 'attempt'):
+            self.production.attempt_artifacts(3)
+
+    def test_existing_output_or_candidate_sha_drift_blocks_before_overlay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            root = workspace / 'v128_work/v132_randomized/v1323'
+            paths = self.pilot.artifacts(workspace, root, self.spec)
+            old = workspace / 'checkpoints/stage1/go1-v1322-supportedshort-pilot-a02-control/model_29.pt'
+            old.parent.mkdir(parents=True)
+            old.write_bytes(b'old preserved')
+            self.pilot.validate_outputs(paths)
+            self.assertEqual(old.read_bytes(), b'old preserved')
+            paths['receipt'].parent.mkdir(parents=True)
+            paths['receipt'].write_bytes(b'existing')
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                self.pilot.validate_outputs(paths)
+            paths['receipt'].unlink()
+            candidate = root / self.manifest['sources'][0]['candidate']
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            candidate.write_bytes(b'drift')
+            with self.assertRaisesRegex(ValueError, 'candidate'):
+                self.preflight.validate_candidate_sources(root, self.manifest)
+
+    def test_first_episode_coverage_rejects_unmatched_repeated_rows(self):
+        first = [{'env_id': i, 'episode_index': 0, 'success': i == 63,
+                  'fallen': i != 63, 'collision': False, 'out_of_bounds': False,
+                  'fell_into_gap': False, 'required_gap_count': 2,
+                  'credited_gap_count': 2 if i == 63 else 0, 'course_x': 3.0,
+                  'reward_events': {'safe_segment': 2 if i == 63 else 0,
+                                    'supported_short': 1}} for i in range(64)]
+        repeated = {**first[0], 'episode_index': 1, 'success': True, 'fallen': False,
+                    'credited_gap_count': 2}
+        report = {'episodes': 256, 'environments': {
+            str(i): {'episodes': 2 if i == 0 else 1} for i in range(64)}}
+        result = self.pilot.summarize(report, first[:63] + [repeated, first[63]], 'control', 64)
+        self.assertEqual(result['first_episode_count'], 64)
+        self.assertEqual(result['reported_completed_episodes'], 65)
+        self.assertEqual(result['first_episode_completion_rate'], 1 / 64)
+        with self.assertRaisesRegex(ValueError, 'episode mismatch'):
+            self.pilot.summarize({'episodes': 64, 'environments': report['environments']},
+                                 first[:63] + [repeated, first[63]], 'control', 64)
+
+    def test_common_environment_clears_ambient_direction_only_switch(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                'os.environ', {'GO1_STAGE1_DIRECTION_ONLY': '1'}):
+            env = self.production.common_environment(Path(directory),
+                {'execution': {'train_and_gate_env': {}}})
+            self.assertNotIn('GO1_STAGE1_DIRECTION_ONLY', env)
+
+    def test_commands_match_warmstart_speed_and_256_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            source = workspace / 'checkpoints/stage1/go1-v1322-real-entrance-s01-p1-d1/model_649.pt'
+            plan = workspace / 'plan.json'
+            commands = [self.pilot.train_command(workspace, self.config, self.spec, arm, plan, source)
+                        for arm in ('control', 'treatment')]
+            for command in commands:
+                for option, value in (('--num-envs', '64'), ('--iterations', '200'),
+                                      ('--critic-warmup-iterations', '40'), ('--seed', '42'),
+                                      ('--speed-min', '0.35'), ('--speed-max', '0.8'),
+                                      ('--initialize-from', str(source))):
+                    self.assertEqual(command[command.index(option) + 1], value)
+                self.assertNotIn('--strict-first-episode', command)
+            eval_cmd = self.pilot.eval_command(workspace, self.config, self.spec, 'control',
+                                               workspace / 'model_29.pt', workspace / 'trace.jsonl')
+            self.assertEqual(eval_cmd[eval_cmd.index('--episodes') + 1], '256')
+            self.assertEqual(eval_cmd[eval_cmd.index('--seed') + 1], '2028')
+            self.assertEqual(eval_cmd[eval_cmd.index('--speed-min') + 1], '0.35')
+            self.assertEqual(eval_cmd[eval_cmd.index('--speed-max') + 1], '0.8')
+            commands[0][commands[0].index('--run-name') + 1] = commands[1][commands[1].index('--run-name') + 1]
+            self.assertEqual(commands[0], commands[1])
+
+    def test_real_dispatch_restores_overlay_even_when_external_pilot_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            root = workspace / 'v128_work/v132_randomized/v1323'
+            (workspace / 'reports').mkdir()
+            live = workspace / 'source/old.py'
+            live.parent.mkdir(parents=True)
+            live.write_bytes(b'active original')
+            helper = workspace / 'source/new.py'
+            staged_a = root / 'old.py'
+            staged_b = root / 'new.py'
+            staged_a.parent.mkdir(parents=True)
+            staged_a.write_bytes(b'candidate')
+            staged_b.write_bytes(b'new helper')
+            rows = [(staged_a, live, self.preflight.digest(live), self.preflight.digest(staged_a)),
+                    (staged_b, helper, None, self.preflight.digest(staged_b))]
+            fake = {'pilot_completion_delta': 0.1}
+            with patch.object(self.production, 'run_pilot', return_value=fake):
+                result = self.production.execute_mode('pilot', workspace, root, {}, {}, {},
+                                                      {}, {}, {}, rows)
+            self.assertEqual(result, fake)
+            self.assertEqual(live.read_bytes(), b'active original')
+            self.assertFalse(helper.exists())
+            self.assertFalse(list((workspace / 'reports').glob('v1323-overlay-*')))
+            with patch.object(self.production, 'run_pilot', side_effect=RuntimeError('pilot stopped')):
+                with self.assertRaisesRegex(RuntimeError, 'pilot stopped'):
+                    self.production.execute_mode('pilot', workspace, root, {}, {}, {},
+                                                 {}, {}, {}, rows)
+            self.assertEqual(live.read_bytes(), b'active original')
+            self.assertFalse(helper.exists())
+
+    def test_fresh_test_dispatch_creates_safe_reports_directory_before_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            root = workspace / 'v128_work/v132_randomized/v1323'
+            root.mkdir(parents=True)
+            (workspace / 'reports').mkdir()
+
+            def fake_external_command(command, log, env, cwd):
+                # Only the external simulator is replaced; the actual test
+                # dispatcher still opens both new log paths and parses them.
+                text = 'Ran 2 tests in 0.01s\n\nOK\n' if 'unittest' in command else '362 passed\n'
+                with log.open('x', encoding='utf-8') as stream:
+                    stream.write(text)
+
+            with patch.object(self.production, 'run_logged', side_effect=fake_external_command):
+                result = self.production.execute_mode(
+                    'test', workspace, root, {'execution': {'test_attempt': 1}}, {},
+                    None, {}, None, None, [])
+            self.assertTrue((root / 'reports').is_dir())
+            self.assertEqual(result['focus_sha256'],
+                             self.preflight.digest(root / 'reports/v1323_focus_a01.log'))
+            self.assertEqual(result['log_sha256'],
+                             self.preflight.digest(root / 'reports/v1323_tests_a01.log'))
+
+    def test_real_dispatch_pilot_and_no_other_training_mode(self):
+        self.assertIn('pilot', self.production.ALLOWED_MODES)
+        self.assertNotIn('train', self.production.ALLOWED_MODES)
+        self.assertNotIn('gate', self.production.ALLOWED_MODES)
+        self.assertNotIn('junction', self.production.ALLOWED_MODES)
+        self.assertEqual(self.production.mode_authorization('pilot'), 'paired-pilot-only')
+        with self.assertRaises(ValueError):
+            self.production.mode_authorization('train')
+        self.assertEqual(self.spec['checkpoint_sha256'],
+                         '1a120f37c23f621e9f08772b1f6fc8520fabc4fb642b1da6342e08a96c7793f9')
+        self.assertEqual(self.spec['pilot_id'], 'go1-v1323-speed-autonomy-pilot-a02')
+        self.assertEqual(self.spec['test_attempt'], 2)
+        self.assertIs(self.spec['final_holdout'], False)
+
+
+if __name__ == '__main__':
+    unittest.main()

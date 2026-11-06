@@ -1,0 +1,8 @@
+{
+  "old_gate_plan": "reports/lp_gate_plan_go1-v1321-real-entrance-s01-p1-d1.json",
+  "old_gate_plan_sha256": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b",
+  "archived_plan": "provenance/v1321_gate_plan.json",
+  "difficulty_levels": 7,
+  "speed_levels": 5,
+  "curriculum_source_sha256": "53451a81d582acab582a02f949efcfc85ccf327131cc0103d059dbb04d0a1ec4"
+}

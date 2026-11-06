@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "candidate": "v1329-speed-feedback-restoration",
+  "status": "code-only-untrained",
+  "run_authorized": false,
+  "training_authorized": false,
+  "automatic_retry_authorized": false,
+  "automatic_follow_on_authorized": false,
+  "automatic_gate_authorized": false,
+  "base_v1328_manifest_sha256": "8a17e8fbcd2df94f4e7032c9dff183906d71af89f8a59458dcc2aba7f135f1d6",
+  "base_reward_config_sha256": "8d4a8abb9e239f595f445f50b0364bf1009b4f7730231a6413aaca4b493f684b",
+  "speed_reference": "v1323/reports/go1-v1323-speed-autonomy-pilot-a02_control.toml",
+  "speed_reference_config_sha256": "5d109ebb63bd9f8901120aaffdf4982b87e7b62cc91a12d9f5b4962344dbfb20",
+  "candidate_reward_config": "configs/rewards_stage1_gaps_v1329_speed_feedback.toml",
+  "candidate_reward_config_sha256": "9e55011874faa24b89c138bb142728a2200192ced47d63292a5dbe0a6b59dc01",
+  "inherited_config_sha256": {
+    "observation_profile.json": "919246821c6e4bb9e10e35f0cc2d0641ddc262fe46f8a0f9101101f1b8ffe2ae",
+    "task_plan.json": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b"
+  },
+  "preserved_contract": {
+    "actor_observation_dim": 1073,
+    "action_dim": 12
+  },
+  "changed_reward_values": {
+    "track_linear_velocity.weight": 3.0,
+    "forward_velocity.weight": 0.5,
+    "forward_progress.max_progress_speed": 0.9,
+    "speed_error_l1.weight": -0.35,
+    "no_progress.weight": -3.0
+  },
+  "notes": [
+    "Only the five listed speed-feedback values differ from the V1328 reward profile; all other parsed reward values are unchanged.",
+    "The five speed-feedback tables match the V1323 A02 control profile; no other V1323 values were copied.",
+    "V1328 observation profile and task plan are byte-identical to this candidate.",
+    "This is an untrained configuration candidate. No runner, checkpoint, holdout, gate, or training authorization is included."
+  ]
+}
