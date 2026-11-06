@@ -1,0 +1,21 @@
+{
+  "profile_id": "go1-v1327-multires-safe-short-gap",
+  "environment_overrides": {
+    "GO1_MULTIRES_SCAN": "1"
+  },
+  "terrain_scan": {
+    "coarse_grid": [8, 16],
+    "coarse_resolution_m": 0.2,
+    "fine_grid": [16, 24],
+    "fine_resolution_m": 0.05,
+    "fine_window_m": [0.75, 1.15],
+    "validity_feature_per_height": true
+  },
+  "actor_prefix_dim": 49,
+  "actor_observation_dim": 1073,
+  "action_dim": 12,
+  "limitations": [
+    "The fine scan is simulator terrain ray-casting, not a deployment camera image.",
+    "A 0.05 m grid improves sampling but does not guarantee correct detection of every 0.08 m trench across all ray/terrain phases."
+  ]
+}

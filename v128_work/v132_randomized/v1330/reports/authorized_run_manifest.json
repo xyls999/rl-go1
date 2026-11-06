@@ -1,0 +1,251 @@
+{
+  "automatic_follow_on_authorized": false,
+  "automatic_gate_authorized": false,
+  "automatic_retry_authorized": false,
+  "base_reward_config_sha256": "8d4a8abb9e239f595f445f50b0364bf1009b4f7730231a6413aaca4b493f684b",
+  "base_v1328_manifest_sha256": "8a17e8fbcd2df94f4e7032c9dff183906d71af89f8a59458dcc2aba7f135f1d6",
+  "baseline": {
+    "source/go1_hier_sim/go1_hier_sim/cli.py": "e7136aa719e19821d153788d3c909747d55dcb97990205a5b2ec67a39232d1ed",
+    "source/go1_hier_sim/go1_hier_sim/envs/config.py": "6d52c2b8ce82930503375453bf7f4dd864961a8832c30f4f7e86672f5a1f602c",
+    "source/go1_hier_sim/go1_hier_sim/envs/edge_contact_v1323.py": null,
+    "source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py": null,
+    "source/go1_hier_sim/go1_hier_sim/envs/episode_trace_v12.py": "3960f1e875dbebaa53cc90f0fa040c3ad015b49fd87af0e858c4b9a58fe82ac7",
+    "source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py": null,
+    "source/go1_hier_sim/go1_hier_sim/envs/geometry.py": "f60a374596427cc61cad38b6c2e5a1da77f4ff7889906e984c944ad6f736e6b1",
+    "source/go1_hier_sim/go1_hier_sim/envs/jump_airtime_v1325.py": null,
+    "source/go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py": null,
+    "source/go1_hier_sim/go1_hier_sim/envs/runtime.py": "0801936f403beb2a34f51a83525931fa9c23c7e5622d907dc1d92dbbc39f5d92",
+    "source/go1_hier_sim/go1_hier_sim/envs/speed_autonomy_v1324.py": null,
+    "source/go1_hier_sim/go1_hier_sim/reward_config.py": "7b46c3a7eb3b423de82eecccdfe7c4750e50cfbaeb94fb1a14e149b6025a834e",
+    "source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py": null,
+    "source/go1_hier_sim/go1_hier_sim/envs/gait_gap_rewards_v1330.py": null
+  },
+  "candidate": "v1330-gait-gap-aware-walk",
+  "candidate_reward_config": "configs/rewards_stage1_gaps_v1330_gait_gap.toml",
+  "candidate_reward_config_sha256": "d150d7e6d07cc1ce351cd827e277cf27efe1af23c3956073837960a4c38f38d9",
+  "changed_reward_values": {
+    "forward_progress.max_progress_speed": 0.9,
+    "forward_velocity.weight": 0.5,
+    "no_progress.weight": -3.0,
+    "speed_error_l1.weight": -0.35,
+    "track_linear_velocity.weight": 3.0
+  },
+  "diagnostic_authorized": false,
+  "execution": {
+    "automatic_follow_on_authorized": false,
+    "automatic_gate_authorized": false,
+    "automatic_retry_authorized": false,
+    "critic_warmup_iterations": 0,
+    "diagnostic_authorized": false,
+    "diagnostic_evaluation": {
+      "certify": false,
+      "episode_seconds": 200,
+      "episodes": 512,
+      "log_path": "reports/go1-v1330-gait-gap-aware-s01-p1-d1-diagnostic-a01_evaluate.log",
+      "num_envs": 512,
+      "receipt_path": "reports/go1-v1330-gait-gap-aware-s01-p1-d1-diagnostic-a01_evaluate.receipt",
+      "report_path": "reports/evaluate_stage1_go1-v1330-gait-gap-aware-s01-p1-d1-diagnostic-a01.json",
+      "run_id": "go1-v1330-gait-gap-aware-s01-p1-d1-diagnostic-a01",
+      "stage": "stage1",
+      "strict_first_episode": true,
+      "terrain": "lp_acrl",
+      "trace_path": "reports/diagnostics/go1-v1330-gait-gap-aware-s01-p1-d1-diagnostic-a01/episode_trace.jsonl"
+    },
+    "diagnostic_run_id": "go1-v1330-gait-gap-aware-s01-p1-d1-diagnostic-a01",
+    "difficulty_max": 0.6,
+    "difficulty_min": 0.0,
+    "episode_seconds": 200,
+    "initialization": "random",
+    "iterations": 650,
+    "launchers": {
+      "scripts/sim.py": "26497171f8883a481efdd858410d75942ced6273c4e0abf523cad514ceb03ad4",
+      "sim.sh": "560313eaa05b14990b65f9d1ba98c396d0d4ce4395f156873b165ec0035edbbb"
+    },
+    "num_envs": 512,
+    "required_idle_gpu_mib_max": 256,
+    "run_authorized": true,
+    "run_id": "go1-v1330-gait-gap-aware-s01-p1-d1",
+    "speed_max": 0.8,
+    "speed_min": 0.35,
+    "terrain": "lp_acrl",
+    "train_environment": {
+      "GO1_FALL_RELATIVE": "1",
+      "GO1_MULTIRES_SCAN": "1",
+      "GO1_POLICY_VARIANT": "map_attn_v3",
+      "GO1_PPO_CONFIG_PATH": "configs/ppo_gaps_long.json",
+      "GO1_PRIVILEGED_ACTOR": "1",
+      "GO1_REWARD_CONFIG_PATH": "v128_work/v132_randomized/v1330/configs/rewards_stage1_gaps_v1330_gait_gap.toml",
+      "GO1_SOFT_RESPAWN": "1",
+      "GO1_V128_FILTER_OBS": "1",
+      "GO1_V19_MIN_WIDTH": "0.05",
+      "GO1_V19_PRELAUNCH_REWARD": "1",
+      "GO1_V19_PRELAUNCH_SCALE": "4",
+      "GO1_V29_FILTER_OBS": "0",
+      "GO1_V8_LONG_GAP_THRESHOLD": "0.05",
+      "GO1_V8_TERRAIN_CONTROL": "1",
+      "GO1_V121_STALL_GROW": "1",
+      "GO1_V121_BACKWARD": "1"
+    },
+    "training_authorized": true,
+    "training_roster": "single:combined_part_entrance",
+    "gate_authorized": false,
+    "holdout_authorized": false,
+    "retry_authorized": false
+  },
+  "inherited_config_sha256": {
+    "observation_profile.json": "919246821c6e4bb9e10e35f0cc2d0641ddc262fe46f8a0f9101101f1b8ffe2ae",
+    "task_plan.json": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b"
+  },
+  "input_files": {
+    "configs/ppo_gaps_long.json": "d7f552c352143284ca5c22db9f186031e649cfd32252857aed8ab3f3989942c8"
+  },
+  "notes": [
+    "One fresh-seed, random-initialized training run only: 512 environments x 650 iterations.",
+    "The user authorized training only; diagnostic evaluation, gate, holdout, retry, and follow-on are not authorized.",
+    "The active authorization is one-shot and is revoked after training completion or a launched-run terminal failure.",
+    "Observation profile and task plan are byte-identical to V1329; actor contract remains 1073 inputs / 12 actions."
+  ],
+  "observation_profile": {
+    "path": "configs/observation_profile.json",
+    "sha256": "919246821c6e4bb9e10e35f0cc2d0641ddc262fe46f8a0f9101101f1b8ffe2ae"
+  },
+  "preserved_contract": {
+    "actor_observation_dim": 1073,
+    "action_dim": 12
+  },
+  "provenance": {
+    "code_only_manifest_original_sha256": "56df67ec1c81810c7ac557c7daf571041f5be1f2140ac05f2ee94dc6ab36aeca"
+  },
+  "reward_config": {
+    "path": "configs/rewards_stage1_gaps_v1330_gait_gap.toml",
+    "sha256": "d150d7e6d07cc1ce351cd827e277cf27efe1af23c3956073837960a4c38f38d9"
+  },
+  "run_authorized": true,
+  "runner_sha256": {
+    "scripts/contracts_v1330.py": "567b5d61abe96f91cbec070e0e4f5688369e7c5553ae4818f13a1ca1d4aa10fe",
+    "scripts/seed_audit_v1330.py": "afa92b7ca4302ff3ede06810692909f75c851be44907d63ca5e5262cdb00a0c0",
+    "scripts/preflight_v1330.py": "c90f39a639d30a0dd412dcacdd7ee5403fdd635fffb39d96bac21dd813ec46c7",
+    "scripts/production_v1330.py": "7a36318b723afd3ec01be9d20fe2dff9cbe36c66a984e06b5fa429d81b11dd49",
+    "scripts/verify_and_run_v1330.sh": "6dc2f046a49489c72d909106a22b8be6ac3b262e0a5dbeabe03137ff8787faaf"
+  },
+  "schema_version": 1,
+  "source_base": "v1327",
+  "source_base_manifest_sha256": "8f7fda4232861459a37dda3dd487011db9e19097a4e57d4cbe08e0b2c473626c",
+  "source_files_sha256": {
+    "go1_hier_sim/go1_hier_sim/cli.py": "ec1372cd0d80feeb08fd9b1debf8bf37e5341b2b891db83c09751474a6bce36a",
+    "go1_hier_sim/go1_hier_sim/envs/config.py": "d30656d7ff9a87a579dacb872d668aa543c088cfa5b7ca9f8fd5e572fffbffe7",
+    "go1_hier_sim/go1_hier_sim/envs/edge_contact_v1323.py": "bb2a0258e4175a703525ba020058fc9fa269640cf96bab0b6bb4b45f863cf851",
+    "go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py": "004b0074ac1972cf634c9304e288a6c318282829a570029c2aa0c243704aab3e",
+    "go1_hier_sim/go1_hier_sim/envs/episode_trace_v12.py": "a8678b2a006d8233018ee09840f09a2c8d5ba41f1510ecf48fbc912fc208e6c2",
+    "go1_hier_sim/go1_hier_sim/envs/gait_gap_rewards_v1330.py": "5cdf4eb7e8d1dbd21bdc93bdda0abbb2a783a8dc4d9e82289365f15bc6a8bb5e",
+    "go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py": "e00680ab39e5c1f0ee68a92fad0da0b383d85d04274c5fe0448f6c88d1003001",
+    "go1_hier_sim/go1_hier_sim/envs/geometry.py": "6308300ee3df73b93f72ab852838f866971f07efeca715cca796938e0d925cb7",
+    "go1_hier_sim/go1_hier_sim/envs/jump_airtime_v1325.py": "b8eafbecdad2c587cbc93d118ff4de68f45cc1fc7408774c6b0e12f4f0ebe3c9",
+    "go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py": "4f862a89833f17c810fd2772678530d5d06f996acd16ea28d8a0a73c6c5e7587",
+    "go1_hier_sim/go1_hier_sim/envs/runtime.py": "c85d31ad4690c89c4b2ac2971746d4d9786df8a1dc906e00361a0a82f7a7f993",
+    "go1_hier_sim/go1_hier_sim/envs/speed_autonomy_v1324.py": "880effbdfe3457b530756d3fe0ba76ae421995b1b95ea14f61f814e36778dcdf",
+    "go1_hier_sim/go1_hier_sim/reward_config.py": "c2a8339a4b3f53f3d421af475c57b7ff72e5423bc29cc1f25d7867b8f726bf98",
+    "go1_hier_sim/go1_hier_sim/strict_gate_v1322.py": "0ae1b6a0b35faf00111535add573821759dc6149a2e2ee166d3f187a6e8d68a5"
+  },
+  "sources": [
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/cli.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/cli.py",
+      "name": "cli.py",
+      "candidate_sha256": "ec1372cd0d80feeb08fd9b1debf8bf37e5341b2b891db83c09751474a6bce36a"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/config.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/config.py",
+      "name": "config.py",
+      "candidate_sha256": "d30656d7ff9a87a579dacb872d668aa543c088cfa5b7ca9f8fd5e572fffbffe7"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/edge_contact_v1323.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/edge_contact_v1323.py",
+      "name": "edge_contact_v1323.py",
+      "candidate_sha256": "bb2a0258e4175a703525ba020058fc9fa269640cf96bab0b6bb4b45f863cf851"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/entrance_support_v1322.py",
+      "name": "entrance_support_v1322.py",
+      "candidate_sha256": "004b0074ac1972cf634c9304e288a6c318282829a570029c2aa0c243704aab3e"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/episode_trace_v12.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/episode_trace_v12.py",
+      "name": "episode_trace_v12.py",
+      "candidate_sha256": "a8678b2a006d8233018ee09840f09a2c8d5ba41f1510ecf48fbc912fc208e6c2"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/gait_gap_rewards_v1330.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/gait_gap_rewards_v1330.py",
+      "name": "gait_gap_rewards_v1330.py",
+      "candidate_sha256": "5cdf4eb7e8d1dbd21bdc93bdda0abbb2a783a8dc4d9e82289365f15bc6a8bb5e"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/gap_score_v1321.py",
+      "name": "gap_score_v1321.py",
+      "candidate_sha256": "e00680ab39e5c1f0ee68a92fad0da0b383d85d04274c5fe0448f6c88d1003001"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/geometry.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/geometry.py",
+      "name": "geometry.py",
+      "candidate_sha256": "6308300ee3df73b93f72ab852838f866971f07efeca715cca796938e0d925cb7"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/jump_airtime_v1325.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/jump_airtime_v1325.py",
+      "name": "jump_airtime_v1325.py",
+      "candidate_sha256": "b8eafbecdad2c587cbc93d118ff4de68f45cc1fc7408774c6b0e12f4f0ebe3c9"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/landing_stability_v131.py",
+      "name": "landing_stability_v131.py",
+      "candidate_sha256": "4f862a89833f17c810fd2772678530d5d06f996acd16ea28d8a0a73c6c5e7587"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/runtime.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/runtime.py",
+      "name": "runtime.py",
+      "candidate_sha256": "c85d31ad4690c89c4b2ac2971746d4d9786df8a1dc906e00361a0a82f7a7f993"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/envs/speed_autonomy_v1324.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/envs/speed_autonomy_v1324.py",
+      "name": "speed_autonomy_v1324.py",
+      "candidate_sha256": "880effbdfe3457b530756d3fe0ba76ae421995b1b95ea14f61f814e36778dcdf"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/reward_config.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/reward_config.py",
+      "name": "reward_config.py",
+      "candidate_sha256": "c2a8339a4b3f53f3d421af475c57b7ff72e5423bc29cc1f25d7867b8f726bf98"
+    },
+    {
+      "candidate": "source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py",
+      "live": "source/go1_hier_sim/go1_hier_sim/strict_gate_v1322.py",
+      "name": "strict_gate_v1322.py",
+      "candidate_sha256": "0ae1b6a0b35faf00111535add573821759dc6149a2e2ee166d3f187a6e8d68a5"
+    }
+  ],
+  "speed_reference": "v1323/reports/go1-v1323-speed-autonomy-pilot-a02_control.toml",
+  "speed_reference_config_sha256": "5d109ebb63bd9f8901120aaffdf4982b87e7b62cc91a12d9f5b4962344dbfb20",
+  "status": "authorized-one-shot",
+  "task_plan": {
+    "path": "configs/task_plan.json",
+    "sha256": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b"
+  },
+  "training_authorized": true,
+  "parent_candidate": "v1329-speed-feedback-restoration",
+  "source_deltas": [
+    "go1_hier_sim/go1_hier_sim/envs/config.py",
+    "go1_hier_sim/go1_hier_sim/envs/runtime.py",
+    "go1_hier_sim/go1_hier_sim/reward_config.py",
+    "go1_hier_sim/go1_hier_sim/envs/gait_gap_rewards_v1330.py"
+  ]
+}
