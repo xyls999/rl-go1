@@ -1,0 +1,93 @@
+{
+  "action_dim": 12,
+  "actor_observation_dim": 1073,
+  "automatic_follow_on_authorized": false,
+  "automatic_gate_authorized": false,
+  "automatic_retry_authorized": false,
+  "base_reward_config_path": "configs/rewards_stage1_gaps_v1333_longgap_a03.toml",
+  "candidate": "v1333-gap-scan-only",
+  "completion_termination_mode": "strict-task-completion",
+  "critic_warmup_iterations": 0,
+  "diagnostic_authorized": false,
+  "difficulty_max": 0.6,
+  "difficulty_min": 0.0,
+  "episode_seconds": 200,
+  "evaluation_authorized": false,
+  "final_checkpoint_iteration": 899,
+  "finish_region": {
+    "end_offset": 34.1,
+    "half_width": 4.0,
+    "start_offset": 33.1
+  },
+  "gate_authorized": false,
+  "holdout_authorized": false,
+  "initialization": "policy-value-weights-only-reset-optimizer",
+  "initialize_from": "/config/Desktop/sim/checkpoints/stage1/go1-v1333-longgap-from-best-entrance-warmstart300-a03/model_299.pt",
+  "initialize_from_sha256": "18c495c7f0e2660bff16455a9d7c53b45f7bfe0858be62979436046e8fadf278",
+  "input_fingerprints": {
+    "active_source": "5bf65117b33f4fe87f06b3aff86beba2e05b171ad6474a8993df0615a45a4217",
+    "base_reward_config": "96c193249a8b2dcd5a6c3ed198791fd4742fd8f8ed9d707bdb13089291fc1538",
+    "candidate_execution": "c65ccffae7b44f985b62335f7afcdc9b22c248e6ca89613b387b88ba2ec88dfb",
+    "candidate_source": "68dce8c0109cea780c66a52cee1056f57bb3b6f4cd180a99093567abc4f680ea",
+    "completion_module": "1f38258f58ac9cb8b06d339e750f2c4b07e7a3e658e4e56f9272db2314dd1a97",
+    "completion_scorer": "09a30c5cc9450e279fd86a7df686a2e002a98b7c2956dccac85d4b5571fefe79",
+    "observation_profile": "9c82d00d96238343974bbd12b633adec1bd1729113c7c4fc67a24fb1498437cd",
+    "parent_candidate_source": "65970e4be9ba77894fbe8fae1720d1975f96ed29d6d05c5368d1bbfd0feb79d1",
+    "parent_checkpoint": "18c495c7f0e2660bff16455a9d7c53b45f7bfe0858be62979436046e8fadf278",
+    "parent_receipt": "23a2533052a956db74b3887a103680fd03b8becf2d94aa87c11e0eaf9a14d586",
+    "ppo_config": "05738de9eebdca3386b1b8571d2caf744c5219e190b9ab9f57dce247de66f139",
+    "reward_config": "e4797e75a7ce4930320c08df8d302be70d9572cfac3e4294f974d30f5ee1b482",
+    "runner": "e2c37802e1c3e071906918416951bf7db358e5876ab0cd83951d8da6111454ab",
+    "sim_wrapper": "d8e9c5f16f4a3b3be692ba6977fc3f56ba83751078e2ba9494407808679b91ea",
+    "simulator": "26497171f8883a481efdd858410d75942ced6273c4e0abf523cad514ceb03ad4",
+    "task_plan": "b15d8a957d45ffaf9bc1bfa42aa4f8ef69183648bc01357d94240c9e2f3e8045",
+    "train_runner": "991adfc9317b9cacc94ed231713cce26856bb060b22176499c4beb726f9bb34b"
+  },
+  "iterations": 900,
+  "num_envs": 512,
+  "optimizer_state_restored": false,
+  "output_paths": {
+    "authorization_record": "v128_work/v132_randomized/v1333/reports/long_gap_warmstart_authorization_a05.json",
+    "checkpoint": "checkpoints/stage1/go1-v1333-longgap-objective-aligned-warmstart900-a05/model_899.pt",
+    "run_dir": "runs/stage1/go1-v1333-longgap-objective-aligned-warmstart900-a05",
+    "seed_audit": "v128_work/v132_randomized/v1333/reports/long_gap_warmstart_seed_a05.txt",
+    "stage_report": "reports/stage_go1-v1333-longgap-objective-aligned-warmstart900-a05.json",
+    "training_log": "v128_work/v132_randomized/v1333/reports/go1-v1333-longgap-objective-aligned-warmstart900-a05_full_train.log",
+    "training_receipt": "v128_work/v132_randomized/v1333/reports/long_gap_warmstart_result_a05.json"
+  },
+  "parent_run_id": "go1-v1333-longgap-from-best-entrance-warmstart300-a03",
+  "policy_variant": "map_attn_v3",
+  "ppo_config_path": "configs/ppo_long_gap_warmstart_a01.json",
+  "ppo_contract": {
+    "num_learning_epochs": 5,
+    "num_mini_batches": 4,
+    "num_steps_per_env": 48,
+    "warm_start_actor_learning_rate": 5e-05,
+    "warm_start_clip_param": 0.1,
+    "warm_start_entropy_coef": 0.002,
+    "warm_start_learning_rate": 0.0003,
+    "warm_start_noise_std": 0.15
+  },
+  "retry_authorized": false,
+  "reward_changes": {
+    "airborne_forward_progress_confirmed": {
+      "max_credit_m": 0.45,
+      "weight": 20.0
+    },
+    "task_completed": {
+      "weight": 200.0
+    }
+  },
+  "reward_config_path": "configs/rewards_stage1_gaps_v1333_longgap_a05.toml",
+  "run_id": "go1-v1333-longgap-objective-aligned-warmstart900-a05",
+  "schema_version": 1,
+  "seed_policy": "fresh-unused-audited",
+  "speed_max": 0.8,
+  "speed_min": 0.35,
+  "stage": "stage1",
+  "task_completion_contract": "task_finish_reached and not fallen and not fell_into_gap",
+  "task_plan_path": "configs/task_plan_gaps_long_a02.json",
+  "terrain": "lp_acrl",
+  "training_authorized": false,
+  "training_roster": "single:gaps_long"
+}

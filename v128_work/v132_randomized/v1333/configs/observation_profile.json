@@ -1,0 +1,48 @@
+{
+  "profile_id": "go1-v1333-gap-scan-only",
+  "environment_overrides": {
+    "GO1_V1333_GAP_SENSITIVITY": "1",
+    "GO1_V1333_GAP_POSTURE_RELIEF": "0",
+    "GO1_PRIVILEGED_ACTOR": "0"
+  },
+  "terrain_scan": {
+    "coarse_grid": [
+      8,
+      16
+    ],
+    "coarse_resolution_m": 0.2,
+    "fine_grid": [
+      16,
+      24
+    ],
+    "fine_resolution_m": 0.05,
+    "fine_window_m": [
+      0.75,
+      1.15
+    ],
+    "gap_edge_grid": [
+      49,
+      5
+    ],
+    "gap_edge_resolution_m": 0.025,
+    "gap_edge_window_m": [
+      1.2,
+      0.1
+    ],
+    "gap_descriptor_features": [
+      "visible",
+      "near_lip_distance",
+      "width",
+      "far_edge_distance"
+    ],
+    "validity_feature_per_height": true
+  },
+  "actor_prefix_dim": 49,
+  "actor_observation_dim": 1073,
+  "action_dim": 12,
+  "actor_observation_source": "ray-derived terrain observations; privileged actor disabled",
+  "limitations": [
+    "2.5 cm ray lattice; not guaranteed below sampling scale.",
+    "Four coarse map corner samples are replaced by the descriptor."
+  ]
+}

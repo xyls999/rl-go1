@@ -1,0 +1,338 @@
+# A03 scales up progress and eligible long-gap flight shaping from A02.
+# Keep all airtime gates, the 0.55 s cap, and safety penalties unchanged.
+# Long-gap warm-start fork from the exact saved model_1298 reward contract.
+# V1330 gait/gap candidate, isolated from the completed V1329 run.
+# Keep ordinary walking grounded and compact; relax those penalties only in
+# simulator-derived gap approach/landing windows. Short gaps reward a modest
+# leading-foot lift; long gaps retain the stable, width-aware flight scorer.
+
+[track_linear_velocity]
+# Restore conservative magnitude tracking from the V1323 A02 control arm.
+weight = 3.0
+# The tracking kernel has to keep gradient across the whole commanded band.
+# At std = 0.20 a 0.4 m/s error scores exp(-4) ~ 0.02, so the term was dead
+# exactly when the policy ran at twice its command and nothing pulled it back.
+std = 0.45
+
+[track_yaw_velocity]
+weight = 0.2
+std = 0.35
+
+[forward_velocity]
+weight = 0.5
+target_velocity = 0.45
+negative_velocity_penalty = 1.0
+
+[forward_progress]
+weight = 8.0
+# Match the V1323 A02 control saturation point.
+max_progress_speed = 0.9
+
+[goal_closeness]
+weight = 1.5
+max_distance = 34.0
+
+[course_checkpoint]
+weight = 8.0
+first = 0.25
+second = 0.5
+third = 0.75
+
+[goal_reached]
+weight = 200.0
+start_offset = 33.1
+end_offset = 34.1
+half_width = 4.0
+
+[straight_line]
+weight = 1.00
+std = 0.75
+
+[velocity_direction]
+weight = 3.0
+std = 0.3
+min_speed = 0.1
+
+[cross_track_l2]
+weight = -1.20
+deadband = 0.1
+scale = 0.75
+max_cost = 4.0
+
+[heading_alignment]
+weight = 0.60
+std = 0.35
+
+[upright]
+weight = 0.6
+
+[phase_contact]
+weight = 0.75
+flat_hz = 2.4
+terrain_hz = 2.4
+flat_duty_factor = 0.56
+terrain_duty_factor = 0.62
+transition_width = 0.12
+force_scale = 25.0
+slip_scale = 0.25
+
+[phase_clearance]
+weight = 0.5
+flat_height = 0.110
+terrain_height = 0.170
+std = 0.04
+
+[base_height]
+weight = 1.0
+target_height = 0.34
+minimum_height = 0.285
+std = 0.05
+low_height_penalty = 1.5
+
+[foot_load_balance]
+weight = -0.3
+ema_alpha = 0.96
+tolerance = 0.08
+scale = 0.15
+max_cost = 4.0
+force_threshold = 4.0
+
+[trot_gait]
+weight = 0.35
+std = 0.1
+max_err = 0.2
+velocity_threshold = 0.1
+terrain_relief = 0.3
+
+[foot_clearance]
+weight = 2.5
+target_height = 0.120
+min_height = 0.080
+terrain_target_height = 0.190
+terrain_min_height = 0.150
+std = 0.04
+velocity_tanh = 2.0
+
+[small_steps]
+weight = 1.5
+target_length = 0.3
+min_length = 0.12
+max_length = 0.6
+
+[step_frequency]
+weight = 1.5
+target_hz = 2.6
+min_hz = 1.4
+max_hz = 8.0
+window_seconds = 1.0
+
+[four_feet_grounded]
+weight = 0.0
+grace_seconds = 0.12
+ramp_seconds = 0.25
+
+[foot_contact_cycle]
+weight = -0.15
+max_air_time = 0.65
+ramp_seconds = 0.25
+terrain_relief = 0.25
+
+[air_time_variance]
+weight = 0.0
+max_time = 0.5
+terrain_relief = 0.25
+
+[flat_trot_pattern]
+weight = 0.0
+terrain_relief = 0.3
+
+[foot_lateral]
+weight = -0.25
+max_outward_deviation = 0.06
+max_inward_deviation = 0.06
+cross_body_penalty = 2.0
+terrain_relief = 0.45
+
+[feet_air_time]
+weight = 0.0
+threshold = 0.18
+max_air_time = 0.45
+command_threshold = 0.1
+
+[feet_slide]
+weight = -0.02
+contact_force_threshold = 1.0
+deadband = 0.04
+scale = 0.25
+terrain_relief = 0.35
+
+[four_feet_airborne]
+weight = 0.0
+
+[base_vertical_velocity_l2]
+weight = -0.35
+
+[base_roll_pitch_rate_l2]
+weight = -0.20
+scale = 1.5
+
+[base_orientation_l2]
+weight = -0.7
+scale = 0.35
+
+[action_rate_l2]
+weight = -0.001
+
+[action_acceleration_l2]
+weight = -0.0007
+
+[joint_torque_l2]
+weight = -0.0002
+
+[joint_deviation_l2]
+weight = -0.06
+deadband = 0.18
+scale = 0.6
+
+[hip_abduction_deviation_l2]
+weight = -0.04
+deadband = 0.1
+scale = 0.3
+
+[hip_abduction_velocity_l2]
+weight = -0.0005
+scale = 4.0
+
+[joint_power_l1]
+weight = -5e-05
+
+[joint_acceleration_l2]
+weight = -1e-06
+
+[fallen]
+weight = -16.0
+
+[collision]
+weight = -10.0
+
+[out_of_bounds]
+weight = -12.0
+
+[takeoff_alignment]
+weight = 0.0
+std = 0.1
+
+[flight_clearance]
+weight = 0.0
+std = 0.04
+
+[landing_stability]
+weight = 6
+std = 0.25
+
+[jump_air_time]
+weight = 0.0
+max_air_time = 0.55
+
+[no_progress]
+# Restore the V1323 A02 control's minimum-progress penalty.
+weight = -3.0
+min_speed = 0.25
+
+[gap_intrusion]
+# Keep a graded signal for unsafe support intrusion, but make the first lip
+# contact comparable to the once-per-gap clearance credit rather than a cliff.
+weight = -8.0
+margin = 0.02
+span = 0.15
+entry_multiplier = 1.5
+base_margin = 0.15
+
+[leap_clear]
+# Pay once for stable per-gap clearance. The V1327 entrance scorer allows
+# supported step-over for short gaps and requires flight only for long gaps.
+weight = 1.0
+# These thresholds are retained for the generic scorer; the V1327 entrance
+# path uses the geometry-aware once-per-gap clearance event.
+min_progress = 0.30
+flight_seconds = 0.06
+bonus = 6
+
+
+[speed_error_l1]
+# Restore the V1323 A02 control's speed-error penalty.
+weight = -0.35
+scale = 0.10
+
+# Positive, bounded bonus only for stable forward landings in the mixed
+# course's first three short trenches and its first tyre field.
+[mixed_transition_balance]
+weight = 1.5
+start_offset = 1.20
+end_offset = 5.60
+minimum_height = 0.23
+target_height = 0.31
+minimum_upright = 0.55
+target_upright = 0.90
+
+# v7b optional mixed-course terms; raw scores are [0,1].
+[supported_short]
+weight = 1.6
+
+[safe_segment]
+weight = 6.0
+
+[edge_contact]
+weight = 0.0
+
+[tire_stall]
+weight = -2.0
+
+# Only new upright, foot-supported forward distance in the mixed tyre band.
+[tire_progress]
+weight = 1.0
+
+# Preserved optional-table schema; disabled for the V1327 short-gap objective.
+[four_feet_jump_air_time]
+weight = 4.0
+max_air_time = 0.55
+
+# Existing video-informed hooks: waiting/retreating at a lip must not outscore
+# a forward attempt; both costs are bounded and reset on forward movement.
+[stall_grow]
+weight = -1.0
+growth_cap = 2.0
+
+[backward_motion]
+weight = -1.0
+
+# Soft fore/aft envelope for swing feet during ordinary supported gait.
+# The runtime masks this term in the approach/crossing/landing window.
+[fore_aft_swing_l2]
+weight = -0.25
+max_excursion = 0.32
+
+# Do not bound on flat/support terrain; a short gap is an exception, not a
+# reason to jump. Grace avoids penalizing a single brief contact transition.
+[non_gap_airborne]
+weight = -0.5
+grace_seconds = 0.06
+ramp_seconds = 0.12
+
+# Small, progress-gated target increase for leading feet at short gaps only.
+# Horizontal width selects step-over versus flight; it does not scale height.
+[short_gap_lift]
+weight = 0.5
+target_height = 0.22
+std = 0.04
+
+# One control-step event cost on the transition into a newly detected gap fall.
+# CONTROL_DT=0.02 s, so the configured one-step impulse is -40 episode-return points.
+[fell_into_gap]
+weight = -2000.0
+
+# Distance-shaped flight credit, isolated from A03. The runtime integrates
+# weight * forward metres, with each gap additionally capped by its measured width.
+[airborne_forward_progress]
+weight = 20.0
+max_credit_m = 0.45
