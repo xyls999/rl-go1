@@ -1,0 +1,30 @@
+{
+  "clip_param": 0.2,
+  "desired_kl": 0.01,
+  "entropy_coef": 0.001,
+  "lam": 0.95,
+  "learning_rate": 0.0003,
+  "locomotion": {
+    "gamma": 0.99,
+    "num_envs": 1024,
+    "num_steps_per_env": 48
+  },
+  "max_grad_norm": 1.0,
+  "max_noise_std": 1.0,
+  "min_noise_std": 0.02,
+  "navigation": {
+    "gamma": 0.995,
+    "num_envs": 512,
+    "num_steps_per_env": 64
+  },
+  "num_learning_epochs": 5,
+  "num_mini_batches": 4,
+  "save_interval": 50,
+  "value_loss_coef": 1.0,
+  "warm_start_actor_learning_rate": 5e-05,
+  "warm_start_clip_param": 0.1,
+  "warm_start_desired_kl": 0.01,
+  "warm_start_entropy_coef": 0.002,
+  "warm_start_learning_rate": 0.0003,
+  "warm_start_noise_std": 0.15
+}

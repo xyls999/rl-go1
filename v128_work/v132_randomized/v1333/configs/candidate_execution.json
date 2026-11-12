@@ -1,0 +1,43 @@
+{
+  "automatic_follow_on_authorized": false,
+  "automatic_gate_authorized": false,
+  "automatic_retry_authorized": false,
+  "candidate": "v1333-gap-scan-only",
+  "diagnostic_authorized": false,
+  "evaluation_authorized": false,
+  "gate_authorized": false,
+  "holdout_authorized": false,
+  "inherited_config_sha256": {
+    "observation_profile.json": "9c82d00d96238343974bbd12b633adec1bd1729113c7c4fc67a24fb1498437cd",
+    "task_plan.json": "e16717f32563c9a1a9db72316a6eb85a51b557975080ae7c9066a71494f6e18b"
+  },
+  "observation_profile_path": "configs/observation_profile.json",
+  "parent_candidate": "v1331-speed-gap-reward",
+  "parent_manifest_sha256": "da1217d081bfa8ba84c11f4451956f004fe8aad407bf363d1fe1fce1da431668",
+  "retry_authorized": false,
+  "reward_config_path": "configs/rewards_stage1_gaps_v1333.toml",
+  "run_authorized": false,
+  "status": "code-only-untrained",
+  "task_plan_path": "configs/task_plan.json",
+  "train_environment": {
+    "GO1_FALL_RELATIVE": "1",
+    "GO1_MULTIRES_SCAN": "1",
+    "GO1_POLICY_VARIANT": "map_attn_v3",
+    "GO1_PPO_CONFIG_PATH": "configs/ppo_gaps_long.json",
+    "GO1_PRIVILEGED_ACTOR": "0",
+    "GO1_REWARD_CONFIG_PATH": "v128_work/v132_randomized/v1333/configs/rewards_stage1_gaps_v1333.toml",
+    "GO1_SOFT_RESPAWN": "1",
+    "GO1_V121_BACKWARD": "1",
+    "GO1_V121_STALL_GROW": "1",
+    "GO1_V128_FILTER_OBS": "1",
+    "GO1_V1333_GAP_POSTURE_RELIEF": "0",
+    "GO1_V1333_GAP_SENSITIVITY": "1",
+    "GO1_V19_MIN_WIDTH": "0.05",
+    "GO1_V19_PRELAUNCH_REWARD": "1",
+    "GO1_V19_PRELAUNCH_SCALE": "4",
+    "GO1_V29_FILTER_OBS": "0",
+    "GO1_V8_LONG_GAP_THRESHOLD": "0.05",
+    "GO1_V8_TERRAIN_CONTROL": "1"
+  },
+  "training_authorized": false
+}
